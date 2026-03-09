@@ -155,6 +155,45 @@ static void rtsp_log_request_preview(const uint8_t *data, size_t len)
     }
 }
 
+static uint32_t rtsp_peek_content_length(const uint8_t *buffer, size_t headers_end)
+{
+    size_t pos = 0;
+
+    while (pos + 1 < headers_end)
+    {
+        size_t line_end = pos;
+        while (line_end + 1 < headers_end)
+        {
+            if (buffer[line_end] == '\r' && buffer[line_end + 1] == '\n')
+                break;
+            line_end++;
+        }
+
+        if (line_end + 1 >= headers_end)
+            break;
+
+        if (line_end == pos)
+            break;
+
+        {
+            size_t name_len = strlen("Content-Length");
+            size_t line_len = line_end - pos;
+            if (line_len > name_len + 1 &&
+                _strnicmp((const char *)(buffer + pos), "Content-Length", name_len) == 0)
+            {
+                const uint8_t *p = buffer + pos + name_len;
+                while (p < buffer + line_end && (*p == ' ' || *p == '\t' || *p == ':'))
+                    p++;
+                return (uint32_t)strtoul((const char *)p, NULL, 10);
+            }
+        }
+
+        pos = line_end + 2;
+    }
+
+    return 0;
+}
+
 /* Returns: 1=parsed one full request, 0=need more bytes, -1=malformed */
 static int parse_rtsp_request(uint8_t *buffer, size_t buffer_len, rtsp_request_t *out_req, size_t *consumed)
 {
@@ -170,6 +209,12 @@ static int parse_rtsp_request(uint8_t *buffer, size_t buffer_len, rtsp_request_t
     memset(out_req, 0, sizeof(*out_req));
 
     if (!find_headers_end(buffer, buffer_len, &headers_end))
+        return 0;
+
+    // For large-body requests (e.g., artwork SET_PARAMETER), wait until body is complete
+    // before full parsing/logging to avoid repeated heavy work per TCP chunk.
+    content_length = rtsp_peek_content_length(buffer, headers_end);
+    if (buffer_len < headers_end + (size_t)content_length)
         return 0;
 
     // Parse headers directly from the receive buffer using stack-only scratch space.
@@ -249,10 +294,6 @@ static int parse_rtsp_request(uint8_t *buffer, size_t buffer_len, rtsp_request_t
                 content_length = (uint32_t)strtoul(header_value, NULL, 10);
         }
     }
-
-    // Body starts right after CRLFCRLF and can be zero length.
-    if (buffer_len < headers_end + (size_t)content_length)
-        return 0;
 
     out_req->body = buffer + headers_end;
     out_req->body_len = (size_t)content_length;

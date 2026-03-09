@@ -208,6 +208,8 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
     // Sanitize ALAC/PCM essentials to known-good ranges used by AirPlay senders.
     if (session->frames_per_packet == 0 || session->frames_per_packet > 8192)
         session->frames_per_packet = 352;
+    if (session->sample_rate < 8000 || session->sample_rate > 192000)
+        session->sample_rate = 44100;
     if (session->channels == 0 || session->channels > 2)
         session->channels = 2;
     if (session->bits_per_sample != 16 && session->bits_per_sample != 24)

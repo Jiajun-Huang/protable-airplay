@@ -16,8 +16,10 @@
 
 // Audio device handle
 static HWAVEOUT hWaveOut = NULL;
-static WAVEHDR waveHeaders[4];
-static uint8_t audioBuffers[4][16384];
+#define WAVEOUT_BUFFER_COUNT 8
+#define WAVEOUT_BUFFER_BYTES 32768
+static WAVEHDR waveHeaders[WAVEOUT_BUFFER_COUNT];
+static uint8_t audioBuffers[WAVEOUT_BUFFER_COUNT][WAVEOUT_BUFFER_BYTES];
 static int currentBuffer = 0;
 static float volume_linear = 0.8f;
 static uint16_t g_channels = 2;
@@ -51,7 +53,7 @@ int win_audio_init(uint32_t sample_rate, uint16_t channels, uint16_t bits_per_sa
     }
 
     // Prepare wave headers and buffers
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < WAVEOUT_BUFFER_COUNT; i++)
     {
         memset(&waveHeaders[i], 0, sizeof(WAVEHDR));
         waveHeaders[i].lpData = (LPSTR)audioBuffers[i];
@@ -89,19 +91,32 @@ int win_audio_play_pcm(const int16_t *samples, size_t frames)
         return -1;
     }
 
-    // Get current buffer
-    WAVEHDR *pHeader = &waveHeaders[currentBuffer];
-
-    // Wait for buffer to be done if needed
-    if (pHeader->dwFlags & WHDR_INQUEUE)
+    // Find a free prepared buffer. Wait briefly instead of dropping immediately.
+    WAVEHDR *pHeader = NULL;
+    int selected_index = -1;
+    for (int wait_ms = 0; wait_ms < 120 && !pHeader; wait_ms += 2)
     {
-        // Buffer still queued, wait a bit
-        Sleep(10);
-        if (pHeader->dwFlags & WHDR_INQUEUE)
+        for (int n = 0; n < WAVEOUT_BUFFER_COUNT; n++)
         {
-            printf("[audio] Buffer still in queue, dropping frame\n");
-            return -1;
+            int idx = (currentBuffer + n) % WAVEOUT_BUFFER_COUNT;
+            if ((waveHeaders[idx].dwFlags & WHDR_INQUEUE) == 0)
+            {
+                pHeader = &waveHeaders[idx];
+                selected_index = idx;
+                break;
+            }
         }
+
+        if (!pHeader)
+            Sleep(2);
+    }
+
+    if (!pHeader)
+    {
+        static int underrun_log_count = 0;
+        if ((underrun_log_count++ % 50) == 0)
+            printf("[audio] Output buffers saturated, skipping chunk\n");
+        return -1;
     }
 
     // Copy PCM data with volume adjustment
@@ -132,7 +147,7 @@ int win_audio_play_pcm(const int16_t *samples, size_t frames)
     }
 
     // Move to next buffer
-    currentBuffer = (currentBuffer + 1) % 4;
+    currentBuffer = (selected_index + 1) % WAVEOUT_BUFFER_COUNT;
 
     return 0;
 }
@@ -171,7 +186,7 @@ void win_audio_close(void)
     waveOutReset(hWaveOut);
 
     // Unprepare headers
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < WAVEOUT_BUFFER_COUNT; i++)
     {
         if (waveHeaders[i].dwFlags & WHDR_PREPARED)
         {
