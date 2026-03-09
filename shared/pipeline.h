@@ -1,26 +1,29 @@
-#include "rtp.h"
-#include "mdns.h"
+#ifndef PIPELINE_H
+#define PIPELINE_H
 
-/**
- * @brief thred for mdns discovery and response
- *
- */
-void mdns_therad(void);
+#include <stddef.h>
 
-/**
- * @brief thread for RTSP communication response and control
- *
- */
-void rtsp_thread(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/**
- * @brief thread for RTP packet reception and audio processing
- *
- */
-void rtp_thread(void);
+typedef struct
+{
+    char local_ip[16];
+    char local_mac_hex[13];
+    char local_mac_colon[18];
+    char device_name[64];
+} pipeline_identity_t;
 
-/**
- * @brief thread for audio output and playback
- *
- */
-void audio_thread(void);
+typedef struct
+{
+    pipeline_identity_t identity;
+} pipeline_startup_t;
+
+int pipeline_start(const pipeline_startup_t *startup);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // PIPELINE_H

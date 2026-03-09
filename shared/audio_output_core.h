@@ -43,7 +43,11 @@ int audio_output_core_init(audio_output_core_t *core,
                            uint8_t channels,
                            uint8_t bits_per_sample,
                            uint32_t ring_seconds,
+                           int16_t *ring_buffer,
+                           size_t ring_buffer_samples,
                            size_t chunk_frames,
+                           int16_t *mix_buffer,
+                           size_t mix_buffer_samples,
                            uint32_t preroll_ms,
                            uint32_t max_latency_ms);
 

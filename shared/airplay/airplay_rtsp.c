@@ -11,6 +11,8 @@ static volatile int g_has_announced_session = 0;
 static volatile int g_airplay_rtsp_recording = 0;
 static volatile float g_airplay_volume_db = -20.0f;
 static volatile unsigned int g_airplay_volume_version = 0;
+static char g_rtsp_local_ip[16] = "10.0.0.178";
+static char g_rtsp_local_mac_hex[13] = "1CCE516D2E30";
 
 static int request_body_contains_key(const rtsp_request_t *request, const char *key)
 {
@@ -142,9 +144,9 @@ int airplay_rtsp_options(rtsp_instance_t *instance, tcp_client_t *client, const 
     challenge = get_header_value(request, "Apple-Challenge");
     if (challenge && challenge[0] != '\0')
     {
-        if (sscanf("10.0.0.178", "%hhu.%hhu.%hhu.%hhu",
+        if (sscanf(g_rtsp_local_ip, "%hhu.%hhu.%hhu.%hhu",
                    &ip_bytes[0], &ip_bytes[1], &ip_bytes[2], &ip_bytes[3]) == 4 &&
-            parse_mac_hex("1CCE516D2E30", mac_addr) == 0)
+            parse_mac_hex(g_rtsp_local_mac_hex, mac_addr) == 0)
         {
             char apple_response[384];
 
@@ -163,6 +165,26 @@ int airplay_rtsp_options(rtsp_instance_t *instance, tcp_client_t *client, const 
     }
 
     return rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+}
+
+int airplay_rtsp_set_identity(const char *local_ip, const char *local_mac_hex)
+{
+    if (!local_ip || !local_mac_hex)
+        return -1;
+
+    if (strlen(local_ip) >= sizeof(g_rtsp_local_ip) || strlen(local_mac_hex) >= sizeof(g_rtsp_local_mac_hex))
+        return -1;
+
+    if (parse_mac_hex(local_mac_hex, (uint8_t[6]){0}) != 0)
+        return -1;
+
+    strncpy(g_rtsp_local_ip, local_ip, sizeof(g_rtsp_local_ip) - 1);
+    g_rtsp_local_ip[sizeof(g_rtsp_local_ip) - 1] = '\0';
+
+    strncpy(g_rtsp_local_mac_hex, local_mac_hex, sizeof(g_rtsp_local_mac_hex) - 1);
+    g_rtsp_local_mac_hex[sizeof(g_rtsp_local_mac_hex) - 1] = '\0';
+
+    return 0;
 }
 int airplay_rtsp_describe(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
 {

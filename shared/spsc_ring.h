@@ -13,7 +13,7 @@ typedef struct
     size_t fill;
 } spsc_ring_t;
 
-int spsc_ring_init(spsc_ring_t *ring, size_t capacity_samples);
+int spsc_ring_init(spsc_ring_t *ring, int16_t *buffer, size_t capacity_samples);
 void spsc_ring_deinit(spsc_ring_t *ring);
 
 size_t spsc_ring_capacity(const spsc_ring_t *ring);

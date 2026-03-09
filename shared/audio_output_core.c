@@ -1,7 +1,6 @@
 #include "audio_output_core.h"
 
 #include <math.h>
-#include <stdlib.h>
 #include <string.h>
 
 static int16_t clamp_i16(int x)
@@ -18,10 +17,16 @@ int audio_output_core_init(audio_output_core_t *core,
                            uint8_t channels,
                            uint8_t bits_per_sample,
                            uint32_t ring_seconds,
+                           int16_t *ring_buffer,
+                           size_t ring_buffer_samples,
                            size_t chunk_frames,
+                           int16_t *mix_buffer,
+                           size_t mix_buffer_samples,
                            uint32_t preroll_ms,
                            uint32_t max_latency_ms)
 {
+    size_t required_ring_samples;
+
     if (!core || channels == 0 || sample_rate == 0 || chunk_frames == 0)
         return -1;
 
@@ -34,15 +39,17 @@ int audio_output_core_init(audio_output_core_t *core,
     core->chunk_samples = chunk_frames * channels;
     core->preroll_samples = ((size_t)sample_rate * channels * preroll_ms) / 1000;
     core->max_latency_samples = ((size_t)sample_rate * channels * max_latency_ms) / 1000;
-    if (spsc_ring_init(&core->ring, (size_t)sample_rate * channels * ring_seconds) != 0)
+    required_ring_samples = (size_t)sample_rate * channels * ring_seconds;
+    if (!ring_buffer || ring_buffer_samples < required_ring_samples)
         return -1;
 
-    core->mix_chunk = (int16_t *)malloc(core->chunk_samples * sizeof(int16_t));
-    if (!core->mix_chunk)
-    {
-        audio_output_core_deinit(core);
+    if (!mix_buffer || mix_buffer_samples < core->chunk_samples)
         return -1;
-    }
+
+    if (spsc_ring_init(&core->ring, ring_buffer, required_ring_samples) != 0)
+        return -1;
+
+    core->mix_chunk = mix_buffer;
 
     core->volume_db = 0.0f;
     core->volume_linear = 1.0f;
@@ -54,7 +61,6 @@ void audio_output_core_deinit(audio_output_core_t *core)
     if (!core)
         return;
 
-    free(core->mix_chunk);
     spsc_ring_deinit(&core->ring);
     memset(core, 0, sizeof(*core));
 }

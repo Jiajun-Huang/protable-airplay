@@ -19,3 +19,4 @@ void airplay_rtsp_clear_announced_session(void);
 int airplay_rtsp_is_recording(void);
 float airplay_rtsp_get_volume_db(void);
 unsigned int airplay_rtsp_get_volume_version(void);
+int airplay_rtsp_set_identity(const char *local_ip, const char *local_mac_hex);

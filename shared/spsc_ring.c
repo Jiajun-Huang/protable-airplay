@@ -1,18 +1,14 @@
 #include "spsc_ring.h"
 
-#include <stdlib.h>
 #include <string.h>
 
-int spsc_ring_init(spsc_ring_t *ring, size_t capacity_samples)
+int spsc_ring_init(spsc_ring_t *ring, int16_t *buffer, size_t capacity_samples)
 {
-    if (!ring || capacity_samples == 0)
+    if (!ring || !buffer || capacity_samples == 0)
         return -1;
 
     memset(ring, 0, sizeof(*ring));
-    ring->buffer = (int16_t *)malloc(capacity_samples * sizeof(int16_t));
-    if (!ring->buffer)
-        return -1;
-
+    ring->buffer = buffer;
     ring->capacity = capacity_samples;
     return 0;
 }
@@ -22,7 +18,6 @@ void spsc_ring_deinit(spsc_ring_t *ring)
     if (!ring)
         return;
 
-    free(ring->buffer);
     memset(ring, 0, sizeof(*ring));
 }
 

@@ -148,6 +148,10 @@ typedef struct audio_output_device
     volatile LONG stop_thread;
 
     audio_output_core_t core;
+    int16_t *ring_storage;
+    size_t ring_storage_samples;
+    int16_t *mix_storage;
+    size_t mix_storage_samples;
 } audio_output_device;
 
 static DWORD WINAPI audio_play_thread_proc(LPVOID param)
@@ -193,6 +197,8 @@ static DWORD WINAPI audio_play_thread_proc(LPVOID param)
 audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample)
 {
     uint8_t effective_bits = 16;
+    size_t ring_samples;
+    size_t chunk_samples;
     audio_output_device_t *device = (audio_output_device_t *)malloc(sizeof(*device));
 
     if (!device)
@@ -201,16 +207,39 @@ audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channel
     memset(device, 0, sizeof(*device));
     InitializeCriticalSection(&device->lock);
 
+    ring_samples = (size_t)sample_rate * channels * AUDIO_RING_SECONDS;
+    chunk_samples = (size_t)AUDIO_CHUNK_FRAMES * channels;
+
+    device->ring_storage = (int16_t *)malloc(ring_samples * sizeof(int16_t));
+    device->mix_storage = (int16_t *)malloc(chunk_samples * sizeof(int16_t));
+    device->ring_storage_samples = ring_samples;
+    device->mix_storage_samples = chunk_samples;
+
+    if (!device->ring_storage || !device->mix_storage)
+    {
+        DeleteCriticalSection(&device->lock);
+        free(device->mix_storage);
+        free(device->ring_storage);
+        free(device);
+        return NULL;
+    }
+
     if (audio_output_core_init(&device->core,
                                sample_rate,
                                channels,
                                effective_bits,
                                AUDIO_RING_SECONDS,
+                               device->ring_storage,
+                               device->ring_storage_samples,
                                AUDIO_CHUNK_FRAMES,
+                               device->mix_storage,
+                               device->mix_storage_samples,
                                AUDIO_PREROLL_MS,
                                AUDIO_MAX_LATENCY_MS) != 0)
     {
         DeleteCriticalSection(&device->lock);
+        free(device->mix_storage);
+        free(device->ring_storage);
         free(device);
         return NULL;
     }
@@ -309,5 +338,7 @@ void audio_output_close(audio_output_device_t *device)
     LeaveCriticalSection(&device->lock);
 
     DeleteCriticalSection(&device->lock);
+    free(device->mix_storage);
+    free(device->ring_storage);
     free(device);
 }
