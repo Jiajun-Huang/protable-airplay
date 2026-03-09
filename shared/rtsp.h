@@ -104,4 +104,7 @@ int rtsp_send_response(tcp_client_t *client, int status, const char *status_text
                        uint32_t cseq, const char *extra_headers,
                        const uint8_t *body, size_t body_len);
 
+/* Basic stream state exposed for other modules (e.g. RTP thread). */
+int rtsp_is_recording(void);
+
 #endif // RTSP_SERVER_H

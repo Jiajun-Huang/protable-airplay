@@ -6,6 +6,33 @@
 #include <string.h>
 #include "airplay/airplay_rtsp.h"
 
+static volatile int g_rtsp_recording = 0;
+
+static int parse_transport_port(const char *transport, const char *key, uint16_t *out_port)
+{
+    const char *p;
+    char *endptr;
+    unsigned long v;
+
+    if (!transport || !key || !out_port)
+        return -1;
+
+    p = strstr(transport, key);
+    if (!p)
+        return -1;
+    p += strlen(key);
+    if (*p != '=')
+        return -1;
+    p++;
+
+    v = strtoul(p, &endptr, 10);
+    if (endptr == p || v > 65535)
+        return -1;
+
+    *out_port = (uint16_t)v;
+    return 0;
+}
+
 static int ascii_ieq(const char *a, const char *b)
 {
     while (*a && *b)
@@ -402,14 +429,22 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
     case RTSP_METHOD_SETUP:
     {
         const char *transport_hdr = rtsp_get_header_value(request, "Transport");
+        uint16_t client_timing = 0;
+        uint16_t client_control = 0;
         char extra_headers[512];
-        const char *transport_rsp = transport_hdr ? transport_hdr : "RTP/AVP/UDP;unicast;mode=record;server_port=6000;control_port=6001;timing_port=6002";
+
+        if (transport_hdr)
+        {
+            parse_transport_port(transport_hdr, "timing_port", &client_timing);
+            parse_transport_port(transport_hdr, "control_port", &client_control);
+        }
+
+        printf("[RTSP] SETUP client ports: timing=%u control=%u\n", client_timing, client_control);
 
         snprintf(extra_headers, sizeof(extra_headers),
                  "Session: 00000001\r\n"
-                 "Transport: %s\r\n"
-                 "Audio-Jack-Status: connected\r\n",
-                 transport_rsp);
+                 "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=6000;control_port=6001;timing_port=6002\r\n"
+                 "Audio-Jack-Status: connected\r\n");
         handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
         break;
     }
@@ -431,13 +466,22 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
         break;
     }
     case RTSP_METHOD_SET_PARAMETER:
-    case RTSP_METHOD_RECORD:
     case RTSP_METHOD_FLUSH:
     case RTSP_METHOD_FLUSHBUFFERED:
     case RTSP_METHOD_TEARDOWN:
     case RTSP_METHOD_PAUSE:
+        if (request->method == RTSP_METHOD_TEARDOWN)
+            g_rtsp_recording = 0;
         handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
         break;
+    case RTSP_METHOD_RECORD:
+    {
+        const char *record_headers = "Session: 00000001\r\nAudio-Latency: 2205\r\n";
+        g_rtsp_recording = 1;
+        printf("[RTSP] RECORD received: streaming started\n");
+        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, record_headers, NULL, 0);
+        break;
+    }
     case RTSP_METHOD_PLAY:
     {
         const char *session_hdr = rtsp_get_header_value(request, "Session");
@@ -465,6 +509,11 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
         printf("[RTSP] Handler failed for method %s, sending 500\n", method_to_str(request->method));
         rtsp_send_response(client, 500, "Internal Server Error", request->cseq, NULL, NULL, 0);
     }
+}
+
+int rtsp_is_recording(void)
+{
+    return g_rtsp_recording;
 }
 
 int rtsp_server_start(rtsp_instance_t *instance)
