@@ -3,8 +3,8 @@
 #include "network_util.h"
 #include "rtsp.h"
 #include "airplay/airplay_discovery.h"
-#include <winsock2.h>
 #include <windows.h>
+#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <stdio.h>
@@ -30,30 +30,51 @@ int main(void)
     int result;
     HANDLE discovery_thread;
     rtsp_instance_t rtsp_server;
+    const char *deviceid_txt = "deviceid=1C:CE:51:6D:2E:30";
 
-    const char *txt[] = {
+    const char *raop_txt[] = {
+        deviceid_txt,
         "txtvers=1",
         "ch=2",
-        "cn=0,1,2,3",
+        "cn=0,1",
         "da=true",
-        "et=0,3,5",
+        "et=0,1",
         "md=0,1,2",
         "pw=false",
         "sv=false",
         "sr=44100",
         "ss=16",
-        "tp=UDP",
+        "tp=TCP,UDP",
         "vn=65537",
         "vs=130.14",
-        "am=TestSpeaker",
+        "am=PortableSpeaker",
+        "ek=0",
+        "sf=0x4"};
+
+    const char *airplay_txt[] = {
+        deviceid_txt,
+        "txtvers=1",
+        "ch=2",
+        "cn=0,1",
+        "da=true",
+        "et=0,1",
+        "md=0,1,2",
+        "pw=false",
+        "sv=false",
+        "sr=44100",
+        "ss=16",
+        "tp=TCP,UDP",
+        "vn=65537",
+        "vs=130.14",
+        "am=PortableSpeaker",
         "sf=0x4"};
 
     printf("[main] Initializing AirPlay discovery (IP=10.0.0.178, MAC=1CCE516D2E30)...\n");
     fflush(stdout);
 
-    result = airplay_discovery_init("TestSpeaker", "1CCE516D2E31", "10.0.0.178",
-                                    txt, sizeof(txt) / sizeof(txt[0]),
-                                    txt, sizeof(txt) / sizeof(txt[0]));
+    result = airplay_discovery_init("TestSpeaker", "1CCE516D2E30", "10.0.0.178",
+                                    raop_txt, sizeof(raop_txt) / sizeof(raop_txt[0]),
+                                    airplay_txt, sizeof(airplay_txt) / sizeof(airplay_txt[0]));
     if (result != 0)
     {
         printf("airplay_discovery_init failed: %d\n", result);

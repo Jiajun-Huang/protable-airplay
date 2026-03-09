@@ -272,7 +272,7 @@ int rtsp_send_response(tcp_client_t *client, int status, const char *status_text
     len = snprintf(response, sizeof(response),
                    "RTSP/1.0 %d %s\r\n"
                    "CSeq: %u\r\n"
-                   "Server: AirTunes/366.0\r\n",
+                   "Server: AirTunes/130.14\r\n",
                    status, status_text, cseq);
 
     // Add extra headers if provided
@@ -359,6 +359,7 @@ int rtsp_server_create(rtsp_instance_t *instance, uint16_t port)
 static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
                                 const rtsp_request_t *request)
 {
+    int handler_rc = 0;
 
     printf("[RTSP] Handling request from client %s:%u\n", client->ip, client->port);
     printf("[RTSP] Method=%s URI=%s CSeq=%u BodyLen=%zu\n",
@@ -382,17 +383,87 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
     switch (request->method)
     {
     case RTSP_METHOD_OPTIONS:
-        airplay_rtsp_options(instance, client, request);
+        handler_rc = airplay_rtsp_options(instance, client, request);
         break;
     case RTSP_METHOD_DESCRIBE:
-        airplay_rtsp_describe(instance, client, request);
+        handler_rc = airplay_rtsp_describe(instance, client, request);
         break;
     case RTSP_METHOD_ANNOUNCE:
-        airplay_rtsp_announce(instance, client, request);
+        handler_rc = airplay_rtsp_announce(instance, client, request);
         break;
+    case RTSP_METHOD_POST:
+    {
+        const char *content_type_hdr = rtsp_get_header_value(request, "Content-Type");
+        printf("[RTSP] POST accepted (Content-Type=%s)\n",
+               content_type_hdr ? content_type_hdr : "none");
+        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+        break;
+    }
+    case RTSP_METHOD_SETUP:
+    {
+        const char *transport_hdr = rtsp_get_header_value(request, "Transport");
+        char extra_headers[512];
+        const char *transport_rsp = transport_hdr ? transport_hdr : "RTP/AVP/UDP;unicast;mode=record;server_port=6000;control_port=6001;timing_port=6002";
+
+        snprintf(extra_headers, sizeof(extra_headers),
+                 "Session: 00000001\r\n"
+                 "Transport: %s\r\n"
+                 "Audio-Jack-Status: connected\r\n",
+                 transport_rsp);
+        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+        break;
+    }
+    case RTSP_METHOD_GET_PARAMETER:
+    {
+        const uint8_t *body = NULL;
+        size_t body_len = 0;
+        const char *ct = "Content-Type: text/parameters\r\n";
+        static const char volume_body[] = "volume: -20.000000\r\n";
+
+        if (request->body && request->body_len >= 6 &&
+            memcmp(request->body, "volume", 6) == 0)
+        {
+            body = (const uint8_t *)volume_body;
+            body_len = strlen(volume_body);
+        }
+
+        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, ct, body, body_len);
+        break;
+    }
+    case RTSP_METHOD_SET_PARAMETER:
+    case RTSP_METHOD_RECORD:
+    case RTSP_METHOD_FLUSH:
+    case RTSP_METHOD_FLUSHBUFFERED:
+    case RTSP_METHOD_TEARDOWN:
+    case RTSP_METHOD_PAUSE:
+        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+        break;
+    case RTSP_METHOD_PLAY:
+    {
+        const char *session_hdr = rtsp_get_header_value(request, "Session");
+        char extra_headers[192];
+
+        if (session_hdr && session_hdr[0] != '\0')
+        {
+            snprintf(extra_headers, sizeof(extra_headers), "Session: %s\r\n", session_hdr);
+            handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+        }
+        else
+        {
+            handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+        }
+        break;
+    }
     default:
-        printf("[RTSP] No handler implemented for method %s\n", method_to_str(request->method));
+        printf("[RTSP] No handler implemented for method %s, sending 501\n", method_to_str(request->method));
+        rtsp_send_response(client, 501, "Not Implemented", request->cseq, NULL, NULL, 0);
         break;
+    }
+
+    if (handler_rc < 0)
+    {
+        printf("[RTSP] Handler failed for method %s, sending 500\n", method_to_str(request->method));
+        rtsp_send_response(client, 500, "Internal Server Error", request->cseq, NULL, NULL, 0);
     }
 }
 

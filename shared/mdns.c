@@ -374,7 +374,7 @@ mdns_error_t mdns_create(mdns_instance_t *instance, const mdns_config_t *config,
 
 mdns_error_t mdns_announce(mdns_instance_t *instance)
 {
-    return mdns_send_response(instance, MDNS_MCAST_ADDR, MDNS_PORT, 4500);
+    return mdns_send_response(instance, MDNS_MCAST_ADDR, MDNS_PORT, 60);
 }
 
 mdns_error_t mdns_goodbye(mdns_instance_t *instance)
