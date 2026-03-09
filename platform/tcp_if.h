@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define TCP_MAX_CLIENTS 4
+#define TCP_MAX_CLIENTS 2
 
 /**
  * @brief TCP client structure

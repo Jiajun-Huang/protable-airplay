@@ -1,205 +1,344 @@
-#include "audio.h"
+#include "../audio_if.h"
+#include "audio_output_core.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <windows.h>
 #include <mmsystem.h>
 
-#pragma comment(lib, "winmm.lib")
+#define AUDIO_RING_SECONDS 3
+#define AUDIO_CHUNK_FRAMES 352
+#define AUDIO_PREROLL_MS 180
+#define AUDIO_MAX_LATENCY_MS 320
 
-/**
- * @brief Windows audio output using WaveOut API
- * Simple, compatible approach using Multimedia Audio API
- * This provides basic 16-bit PCM playback to default audio device
- */
-
-// Audio device handle
-static HWAVEOUT hWaveOut = NULL;
-static WAVEHDR waveHeaders[4];
-static uint8_t audioBuffers[4][16384];
-static int currentBuffer = 0;
-static float volume_linear = 0.8f;
-
-int win_audio_init(uint32_t sample_rate, uint16_t channels, uint16_t bits_per_sample)
+typedef struct
 {
-    if (hWaveOut != NULL)
-    {
-        printf("[audio] Audio already initialized\n");
-        return 0;
-    }
+    HWAVEOUT handle;
+    uint8_t channels;
+    uint8_t bits_per_sample;
+    WAVEHDR headers[8];
+    uint8_t buffers[8][32768];
+    int current_buffer;
+    int initialized;
+} win_audio_backend_t;
 
-    // Prepare wave format
-    WAVEFORMATEX wfx;
-    memset(&wfx, 0, sizeof(wfx));
-    wfx.wFormatTag = WAVE_FORMAT_PCM;
-    wfx.nChannels = channels;
-    wfx.nSamplesPerSec = sample_rate;
-    wfx.wBitsPerSample = bits_per_sample;
-    wfx.nBlockAlign = (wfx.nChannels * wfx.wBitsPerSample) / 8;
-    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-    wfx.cbSize = 0;
+static win_audio_backend_t g_win_audio;
 
-    // Open waveform audio output device
-    MMRESULT result = waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL);
+static int win_audio_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample)
+{
+    MMRESULT result;
+    int i;
+    WAVEFORMATEX wf;
+
+    memset(&wf, 0, sizeof(wf));
+    wf.wFormatTag = WAVE_FORMAT_PCM;
+    wf.nChannels = channels;
+    wf.nSamplesPerSec = sample_rate;
+    wf.wBitsPerSample = bits_per_sample;
+    wf.nBlockAlign = (WORD)((wf.nChannels * wf.wBitsPerSample) / 8);
+    wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
+
+    g_win_audio.handle = NULL;
+    g_win_audio.channels = channels;
+    g_win_audio.bits_per_sample = bits_per_sample;
+    g_win_audio.current_buffer = 0;
+    g_win_audio.initialized = 0;
+
+    result = waveOutOpen(&g_win_audio.handle, WAVE_MAPPER, &wf, 0, 0, CALLBACK_NULL);
     if (result != MMSYSERR_NOERROR)
-    {
-        fprintf(stderr, "[audio] Failed to open waveform output device: %d\n", result);
         return -1;
-    }
 
-    // Prepare wave headers and buffers
-    for (int i = 0; i < 4; i++)
+    for (i = 0; i < 8; i++)
     {
-        memset(&waveHeaders[i], 0, sizeof(WAVEHDR));
-        waveHeaders[i].lpData = (LPSTR)audioBuffers[i];
-        waveHeaders[i].dwBufferLength = sizeof(audioBuffers[i]);
-        waveHeaders[i].dwFlags = 0;
+        memset(&g_win_audio.headers[i], 0, sizeof(WAVEHDR));
+        g_win_audio.headers[i].lpData = (LPSTR)g_win_audio.buffers[i];
+        g_win_audio.headers[i].dwBufferLength = sizeof(g_win_audio.buffers[i]);
 
-        result = waveOutPrepareHeader(hWaveOut, &waveHeaders[i], sizeof(WAVEHDR));
+        result = waveOutPrepareHeader(g_win_audio.handle, &g_win_audio.headers[i], sizeof(WAVEHDR));
         if (result != MMSYSERR_NOERROR)
         {
-            fprintf(stderr, "[audio] Failed to prepare wave header %d: %d\n", i, result);
-            waveOutClose(hWaveOut);
-            hWaveOut = NULL;
+            int j;
+            for (j = 0; j < i; j++)
+                waveOutUnprepareHeader(g_win_audio.handle, &g_win_audio.headers[j], sizeof(WAVEHDR));
+
+            waveOutClose(g_win_audio.handle);
+            g_win_audio.handle = NULL;
             return -1;
         }
     }
 
-    currentBuffer = 0;
-    printf("[audio] Initialized: %u Hz, %u channels, %u bits\n", sample_rate, channels, bits_per_sample);
+    g_win_audio.initialized = 1;
     return 0;
 }
 
-int win_audio_play_pcm(const int16_t *samples, size_t frames)
+static int win_audio_play_pcm(const int16_t *samples, size_t frame_count)
 {
-    if (!hWaveOut || !samples || frames == 0)
+    size_t bytes;
+    int wait_ms;
+    int n;
+    int selected = -1;
+    WAVEHDR *header;
+
+    if (!g_win_audio.initialized || !samples || frame_count == 0)
         return -1;
 
-    // Calculate buffer size needed (frames * channels * bytes_per_sample)
-    // Assuming stereo 16-bit: frames * 2 * 2 = frames * 4
-    size_t bytes_needed = frames * 4;
-    if (bytes_needed > sizeof(audioBuffers[0]))
-    {
-        fprintf(stderr, "[audio] Frame size too large: %zu bytes\n", bytes_needed);
+    bytes = frame_count * g_win_audio.channels * (g_win_audio.bits_per_sample / 8);
+    if (bytes > sizeof(g_win_audio.buffers[0]))
         return -1;
-    }
 
-    // Get current buffer
-    WAVEHDR *pHeader = &waveHeaders[currentBuffer];
-
-    // Wait for buffer to be done if needed
-    if (pHeader->dwFlags & WHDR_INQUEUE)
+    for (wait_ms = 0; wait_ms < 120 && selected < 0; wait_ms += 2)
     {
-        // Buffer still queued, wait a bit
-        Sleep(10);
-        if (pHeader->dwFlags & WHDR_INQUEUE)
+        for (n = 0; n < 8; n++)
         {
-            printf("[audio] Buffer still in queue, dropping frame\n");
-            return -1;
+            int idx = (g_win_audio.current_buffer + n) % 8;
+            if ((g_win_audio.headers[idx].dwFlags & WHDR_INQUEUE) == 0)
+            {
+                selected = idx;
+                break;
+            }
         }
+
+        if (selected < 0)
+            Sleep(2);
     }
 
-    // Copy PCM data with volume adjustment
-    int16_t *pBuffer = (int16_t *)pHeader->lpData;
-    for (size_t i = 0; i < frames * 2; i++)
-    {
-        // Apply volume as linear gain
-        float sample_f = (float)samples[i] * volume_linear;
-        // Clamp to int16 range
-        if (sample_f > 32767.0f)
-            pBuffer[i] = 32767;
-        else if (sample_f < -32768.0f)
-            pBuffer[i] = -32768;
-        else
-            pBuffer[i] = (int16_t)sample_f;
-    }
-
-    // Set actual data size
-    pHeader->dwBufferLength = bytes_needed;
-    pHeader->dwFlags &= ~WHDR_DONE;
-
-    // Queue the buffer
-    MMRESULT result = waveOutWrite(hWaveOut, pHeader, sizeof(WAVEHDR));
-    if (result != MMSYSERR_NOERROR)
-    {
-        fprintf(stderr, "[audio] Failed to write wave data: %d\n", result);
-        return -1;
-    }
-
-    // Move to next buffer
-    currentBuffer = (currentBuffer + 1) % 4;
-
-    return 0;
-}
-
-int win_audio_set_volume_db(float volume_db)
-{
-    // Convert dB to linear (dB = 20 * log10(linear))
-    // linear = 10^(dB/20)
-    volume_linear = powf(10.0f, volume_db / 20.0f);
-
-    // Clamp to reasonable range [0, 2.0]
-    if (volume_linear < 0.0f)
-        volume_linear = 0.0f;
-    if (volume_linear > 2.0f)
-        volume_linear = 2.0f;
-
-    printf("[audio] Volume set to %.1f dB (linear: %.3f)\n", volume_db, volume_linear);
-    return 0;
-}
-
-int win_audio_flush(void)
-{
-    if (!hWaveOut)
+    if (selected < 0)
         return -1;
 
-    waveOutReset(hWaveOut);
+    header = &g_win_audio.headers[selected];
+    memcpy(header->lpData, samples, bytes);
+    header->dwBufferLength = (DWORD)bytes;
+    header->dwFlags &= ~WHDR_DONE;
+
+    if (waveOutWrite(g_win_audio.handle, header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR)
+        return -1;
+
+    g_win_audio.current_buffer = (selected + 1) % 8;
     return 0;
 }
 
-void win_audio_close(void)
+static void win_audio_close(void)
 {
-    if (!hWaveOut)
+    int i;
+    if (!g_win_audio.initialized)
         return;
 
-    // Stop playback
-    waveOutReset(hWaveOut);
+    waveOutReset(g_win_audio.handle);
 
-    // Unprepare headers
-    for (int i = 0; i < 4; i++)
+    for (i = 0; i < 8; i++)
     {
-        if (waveHeaders[i].dwFlags & WHDR_PREPARED)
-        {
-            waveOutUnprepareHeader(hWaveOut, &waveHeaders[i], sizeof(WAVEHDR));
-        }
+        if (g_win_audio.headers[i].dwFlags & WHDR_PREPARED)
+            waveOutUnprepareHeader(g_win_audio.handle, &g_win_audio.headers[i], sizeof(WAVEHDR));
     }
 
-    // Close device
-    waveOutClose(hWaveOut);
-    hWaveOut = NULL;
-
-    printf("[audio] Closed audio output\n");
+    waveOutClose(g_win_audio.handle);
+    g_win_audio.handle = NULL;
+    g_win_audio.initialized = 0;
 }
 
-// Callback handlers (stubs for now)
-void win_audio_on_volume_db(float volume_db, void *user_data)
+typedef struct audio_output_device
 {
-    (void)user_data;
-    win_audio_set_volume_db(volume_db);
+    FILE *log_file;
+    uint32_t sample_count;
+    int speaker_ready;
+
+    CRITICAL_SECTION lock;
+    HANDLE play_thread;
+    volatile LONG stop_thread;
+
+    audio_output_core_t core;
+    int16_t *ring_storage;
+    size_t ring_storage_samples;
+    int16_t *mix_storage;
+    size_t mix_storage_samples;
+} audio_output_device;
+
+static DWORD WINAPI audio_play_thread_proc(LPVOID param)
+{
+    audio_output_device_t *device = (audio_output_device_t *)param;
+    int have_pending_chunk = 0;
+    if (!device)
+        return 0;
+
+    while (InterlockedCompareExchange((LONG *)&device->stop_thread, 0, 0) == 0)
+    {
+        if (!have_pending_chunk)
+        {
+            int has_chunk = 0;
+            EnterCriticalSection(&device->lock);
+            has_chunk = audio_output_core_pop_chunk(&device->core);
+            LeaveCriticalSection(&device->lock);
+
+            if (!has_chunk)
+            {
+                Sleep(2);
+                continue;
+            }
+
+            have_pending_chunk = 1;
+        }
+
+        if (win_audio_play_pcm(device->core.mix_chunk, device->core.chunk_frames) != 0)
+        {
+            Sleep(2);
+            continue;
+        }
+
+        EnterCriticalSection(&device->lock);
+        audio_output_core_on_chunk_played(&device->core);
+        LeaveCriticalSection(&device->lock);
+        have_pending_chunk = 0;
+    }
+
+    return 0;
 }
 
-void win_audio_on_progress(uint32_t start, uint32_t current, uint32_t end, void *user_data)
+audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample)
 {
-    (void)user_data;
-    (void)start;
-    (void)current;
-    (void)end;
-    // Progress callback - could update UI here
+    uint8_t effective_bits = 16;
+    size_t ring_samples;
+    size_t chunk_samples;
+    audio_output_device_t *device = (audio_output_device_t *)malloc(sizeof(*device));
+
+    if (!device)
+        return NULL;
+
+    memset(device, 0, sizeof(*device));
+    InitializeCriticalSection(&device->lock);
+
+    ring_samples = (size_t)sample_rate * channels * AUDIO_RING_SECONDS;
+    chunk_samples = (size_t)AUDIO_CHUNK_FRAMES * channels;
+
+    device->ring_storage = (int16_t *)malloc(ring_samples * sizeof(int16_t));
+    device->mix_storage = (int16_t *)malloc(chunk_samples * sizeof(int16_t));
+    device->ring_storage_samples = ring_samples;
+    device->mix_storage_samples = chunk_samples;
+
+    if (!device->ring_storage || !device->mix_storage)
+    {
+        DeleteCriticalSection(&device->lock);
+        free(device->mix_storage);
+        free(device->ring_storage);
+        free(device);
+        return NULL;
+    }
+
+    if (audio_output_core_init(&device->core,
+                               sample_rate,
+                               channels,
+                               effective_bits,
+                               AUDIO_RING_SECONDS,
+                               device->ring_storage,
+                               device->ring_storage_samples,
+                               AUDIO_CHUNK_FRAMES,
+                               device->mix_storage,
+                               device->mix_storage_samples,
+                               AUDIO_PREROLL_MS,
+                               AUDIO_MAX_LATENCY_MS) != 0)
+    {
+        DeleteCriticalSection(&device->lock);
+        free(device->mix_storage);
+        free(device->ring_storage);
+        free(device);
+        return NULL;
+    }
+
+    device->speaker_ready = (win_audio_init(sample_rate, channels, effective_bits) == 0) ? 1 : 0;
+
+    if (device->speaker_ready)
+    {
+        device->play_thread = CreateThread(NULL, 0, audio_play_thread_proc, device, 0, NULL);
+        if (!device->play_thread)
+            device->speaker_ready = 0;
+    }
+
+    audio_output_core_set_volume_db(&device->core, -20.0f);
+
+    device->log_file = fopen("raop_audio.pcm", "wb");
+    printf("[audio_output] Output: %uHz, %u-ch, %u-bit (requested %u), speaker=%s\n",
+           sample_rate,
+           channels,
+           effective_bits,
+           bits_per_sample,
+           device->speaker_ready ? "ready" : "failed");
+
+    return device;
 }
 
-void win_audio_on_stream_state(const char *state, void *user_data)
+int audio_output_write(audio_output_device_t *device, const int16_t *samples, size_t sample_count)
 {
-    (void)user_data;
-    printf("[audio] Stream state: %s\n", state);
+    audio_output_stats_t stats;
+    int written;
+
+    if (!device || !samples || sample_count == 0)
+        return -1;
+
+    EnterCriticalSection(&device->lock);
+    written = audio_output_core_write(&device->core, samples, sample_count);
+    if (audio_output_core_collect_stats(&device->core, GetTickCount(), &stats))
+    {
+        printf("[audio_stats] in=%u fps out=%u fps ring=%u ms cfg=%uHz/%uch\\n",
+               stats.in_frames_per_s,
+               stats.out_frames_per_s,
+               stats.ring_fill_ms,
+               device->core.sample_rate,
+               device->core.channels);
+    }
+    LeaveCriticalSection(&device->lock);
+
+    if (device->log_file)
+    {
+        size_t logged = fwrite(samples, sizeof(int16_t), sample_count, device->log_file);
+        device->sample_count += (uint32_t)logged;
+    }
+
+    return written;
+}
+
+int audio_output_set_volume_db(audio_output_device_t *device, float volume_db)
+{
+    int rc;
+
+    if (!device)
+        return -1;
+
+    EnterCriticalSection(&device->lock);
+    rc = audio_output_core_set_volume_db(&device->core, volume_db);
+    printf("[audio_output] Volume %.3f dB (x%.4f)\n", device->core.volume_db, device->core.volume_linear);
+    LeaveCriticalSection(&device->lock);
+
+    return rc;
+}
+
+void audio_output_close(audio_output_device_t *device)
+{
+    if (!device)
+        return;
+
+    InterlockedExchange((LONG *)&device->stop_thread, 1);
+    if (device->play_thread)
+    {
+        WaitForSingleObject(device->play_thread, 1000);
+        CloseHandle(device->play_thread);
+        device->play_thread = NULL;
+    }
+
+    if (device->log_file)
+    {
+        fclose(device->log_file);
+        printf("[audio_output] PCM written: %u samples to raop_audio.pcm\n", device->sample_count);
+    }
+
+    if (device->speaker_ready)
+        win_audio_close();
+
+    EnterCriticalSection(&device->lock);
+    audio_output_core_deinit(&device->core);
+    LeaveCriticalSection(&device->lock);
+
+    DeleteCriticalSection(&device->lock);
+    free(device->mix_storage);
+    free(device->ring_storage);
+    free(device);
 }

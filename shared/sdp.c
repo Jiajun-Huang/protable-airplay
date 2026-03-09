@@ -4,6 +4,17 @@
 #include <string.h>
 #include <ctype.h>
 
+static void to_lower_ascii(char *s)
+{
+    if (!s)
+        return;
+    while (*s)
+    {
+        *s = (char)tolower((unsigned char)*s);
+        s++;
+    }
+}
+
 // Base64 decode table
 static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -115,26 +126,45 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
             {
                 char codec_name[64];
                 unsigned int rate, channels;
-                if (sscanf_s(value + 7, "%*d %63[^/]/%u/%u", codec_name, (unsigned int)sizeof(codec_name), &rate, &channels) >= 3)
+                int fields = sscanf_s(value + 7, "%*d %63[^/]/%u/%u",
+                                      codec_name, (unsigned int)sizeof(codec_name),
+                                      &rate, &channels);
+                if (fields < 2)
                 {
-                    if (strstr(codec_name, "AppleLossless") || strstr(codec_name, "ALAC"))
+                    fields = sscanf_s(value + 7, "%*d %63[^/]/%u",
+                                      codec_name, (unsigned int)sizeof(codec_name),
+                                      &rate);
+                }
+
+                if (fields >= 2)
+                {
+                    to_lower_ascii(codec_name);
+
+                    if (strstr(codec_name, "applelossless") || strstr(codec_name, "alac"))
                     {
                         session->codec = SDP_CODEC_ALAC;
                         session->sample_rate = rate;
-                        session->channels = (uint16_t)channels;
+                        if (fields >= 3)
+                            session->channels = (uint16_t)channels;
                     }
-                    else if (strstr(codec_name, "AAC"))
+                    else if (strstr(codec_name, "aac") || strstr(codec_name, "mpeg4-generic") || strstr(codec_name, "mp4a"))
                     {
                         session->codec = SDP_CODEC_AAC;
                         session->sample_rate = rate;
-                        session->channels = (uint16_t)channels;
+                        if (fields >= 3)
+                            session->channels = (uint16_t)channels;
                     }
-                    else if (strstr(codec_name, "L16") || strstr(codec_name, "PCM"))
+                    else if (strstr(codec_name, "l16") || strstr(codec_name, "pcm"))
                     {
                         session->codec = SDP_CODEC_PCM;
                         session->sample_rate = rate;
-                        session->channels = (uint16_t)channels;
+                        if (fields >= 3)
+                            session->channels = (uint16_t)channels;
                         session->bits_per_sample = 16;
+                    }
+                    else
+                    {
+                        printf("[sdp] Unknown rtpmap codec '%s'\n", codec_name);
                     }
                 }
             }
@@ -201,9 +231,32 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
 
     free(sdp_text);
 
-    // If codec still unknown, assume ALAC
-    if (session->codec == SDP_CODEC_UNKNOWN)
+    // Fallback inference: many senders provide ALAC fmtp but inconsistent/omitted rtpmap.
+    // Treat valid ALAC fmtp as ALAC session instead of leaving codec unknown.
+    if (session->codec == SDP_CODEC_UNKNOWN && session->alac_fmtp_count >= 3)
+    {
         session->codec = SDP_CODEC_ALAC;
+        if (session->frames_per_packet == 0)
+            session->frames_per_packet = session->alac_fmtp[0];
+        if (session->bits_per_sample == 0)
+            session->bits_per_sample = (uint16_t)session->alac_fmtp[2];
+        if (session->alac_fmtp_count >= 7 && session->channels == 0)
+            session->channels = (uint16_t)session->alac_fmtp[6];
+        if (session->alac_fmtp_count >= 11 && session->sample_rate == 0)
+            session->sample_rate = session->alac_fmtp[10];
+
+        printf("[sdp] Inferred ALAC codec from fmtp (%zu params)\n", session->alac_fmtp_count);
+    }
+
+    // Sanitize ALAC/PCM essentials to known-good ranges used by AirPlay senders.
+    if (session->frames_per_packet == 0 || session->frames_per_packet > 8192)
+        session->frames_per_packet = 352;
+    if (session->sample_rate < 8000 || session->sample_rate > 192000)
+        session->sample_rate = 44100;
+    if (session->channels == 0 || session->channels > 2)
+        session->channels = 2;
+    if (session->bits_per_sample != 16 && session->bits_per_sample != 24)
+        session->bits_per_sample = 16;
 
     printf("[sdp] Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
            session->codec, session->sample_rate, session->channels,

@@ -59,9 +59,9 @@ int alac_decoder_init(alac_decoder_t *decoder,
  * @param max_output_samples maximum samples output buffer can hold
  * @return 0 on success, negative on error
  */
-int alac_decode_frame(alac_decoder_t *decoder,
-                      const uint8_t *input, size_t input_len,
-                      int16_t *output, size_t *output_samples, size_t max_output_samples);
+int alac_decoder_decode_frame(alac_decoder_t *decoder,
+                              const uint8_t *input, size_t input_len,
+                              int16_t *output, size_t *output_samples, size_t max_output_samples);
 
 void alac_decoder_close(alac_decoder_t *decoder);
 

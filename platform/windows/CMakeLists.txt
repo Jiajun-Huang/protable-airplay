@@ -13,5 +13,7 @@ target_link_libraries(raop_win
         ws2_32
         iphlpapi
         winmm
+        ole32
+        uuid
 )
 

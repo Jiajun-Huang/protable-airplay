@@ -8,6 +8,9 @@ static mdns_instance_t g_raop_mdns;
 static mdns_instance_t g_airplay_mdns;
 static mdns_instance_t *g_instances[2] = {&g_raop_mdns, &g_airplay_mdns};
 static int g_initialized = 0;
+static char g_raop_instance_name[96];
+static char g_airplay_instance_name[96];
+static char g_host_name[96];
 
 int airplay_discovery_init(const char *friendly_name,
                            const char *local_mac,
@@ -17,8 +20,6 @@ int airplay_discovery_init(const char *friendly_name,
                            const char **airplay_txt_entries,
                            size_t airplay_txt_count)
 {
-    char raop_instance_name[96] = {0};
-    char host_name[96] = {0};
     mdns_config_t raop_cfg;
     mdns_config_t airplay_cfg;
 
@@ -56,17 +57,19 @@ int airplay_discovery_init(const char *friendly_name,
     }
 
     if (local_mac && local_mac[0] != '\0')
-        snprintf(raop_instance_name, sizeof(raop_instance_name), "%s@%s", local_mac, friendly_name);
+        snprintf(g_raop_instance_name, sizeof(g_raop_instance_name), "%s@%s", local_mac, friendly_name);
     else
-        snprintf(raop_instance_name, sizeof(raop_instance_name), "%s", friendly_name);
+        snprintf(g_raop_instance_name, sizeof(g_raop_instance_name), "%s", friendly_name);
+
+    snprintf(g_airplay_instance_name, sizeof(g_airplay_instance_name), "%s", friendly_name);
 
     // Keep host label simple and deterministic.
-    snprintf(host_name, sizeof(host_name), "%s.local", friendly_name);
+    snprintf(g_host_name, sizeof(g_host_name), "%s.local", friendly_name);
 
     memset(&raop_cfg, 0, sizeof(raop_cfg));
     raop_cfg.service_type = "_raop._tcp.local";
-    raop_cfg.instance_name = raop_instance_name;
-    raop_cfg.hostname = host_name;
+    raop_cfg.instance_name = g_raop_instance_name;
+    raop_cfg.hostname = g_host_name;
     raop_cfg.port = 5000;
     raop_cfg.ipv4 = local_ip;
     raop_cfg.txt_entries = raop_txt_entries;
@@ -74,8 +77,8 @@ int airplay_discovery_init(const char *friendly_name,
 
     memset(&airplay_cfg, 0, sizeof(airplay_cfg));
     airplay_cfg.service_type = "_airplay._tcp.local";
-    airplay_cfg.instance_name = friendly_name;
-    airplay_cfg.hostname = host_name;
+    airplay_cfg.instance_name = g_airplay_instance_name;
+    airplay_cfg.hostname = g_host_name;
     airplay_cfg.port = 5000;
     airplay_cfg.ipv4 = local_ip;
     airplay_cfg.txt_entries = airplay_txt_entries;
