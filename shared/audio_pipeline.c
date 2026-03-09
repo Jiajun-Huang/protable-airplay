@@ -163,8 +163,9 @@ static void audio_pipeline_on_rtp_audio(const rtp_packet_t *packet, void *user_d
         uint16_t expected = pipeline->last_sequence + 1;
         if (packet->header.sequence != expected)
         {
-            uint16_t lost = packet->header.sequence - expected;
-            pipeline->packets_lost += lost;
+            int16_t delta = (int16_t)(packet->header.sequence - expected);
+            if (delta > 0)
+                pipeline->packets_lost += (uint32_t)delta;
             // printf("[pipeline] Lost %u packets (seq jump %u -> %u)\n",
             //        lost, pipeline->last_sequence, packet->header.sequence);
         }
@@ -183,6 +184,30 @@ static void audio_pipeline_on_rtp_audio(const rtp_packet_t *packet, void *user_d
                                        decoded_samples, &decoded_count) < 0)
         {
             return;
+        }
+
+        // Some senders/decoder paths may yield mono-sized output for stereo ALAC sessions.
+        // Expand in-place to interleaved stereo to keep stream timing correct.
+        if (pipeline->session.channels == 2 &&
+            pipeline->session.frames_per_packet > 0 &&
+            decoded_count == pipeline->session.frames_per_packet &&
+            decoded_count * 2 <= MAX_AUDIO_BUFFER_SAMPLES)
+        {
+            for (size_t i = decoded_count; i-- > 0;)
+            {
+                int16_t s = decoded_samples[i];
+                decoded_samples[i * 2] = s;
+                decoded_samples[i * 2 + 1] = s;
+            }
+            decoded_count *= 2;
+
+            static int mono_fix_logged = 0;
+            if (!mono_fix_logged++)
+            {
+                printf("[pipeline] Expanded mono ALAC frame to stereo (%u -> %u samples)\n",
+                       (unsigned)pipeline->session.frames_per_packet,
+                       (unsigned)decoded_count);
+            }
         }
     }
     else if (pipeline->session.codec == SDP_CODEC_PCM)

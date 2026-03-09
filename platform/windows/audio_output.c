@@ -32,6 +32,12 @@ typedef struct
     CRITICAL_SECTION lock;
     HANDLE play_thread;
     volatile LONG stop_thread;
+
+    uint64_t in_samples_total;
+    uint64_t out_samples_total;
+    uint64_t in_samples_last;
+    uint64_t out_samples_last;
+    DWORD stats_last_tick;
 } audio_output_device;
 
 static void ring_pop_samples(audio_output_device *device, int16_t *dst, size_t count)
@@ -123,7 +129,10 @@ static DWORD WINAPI audio_play_thread_proc(LPVOID param)
         if (win_audio_play_pcm(device->mix_chunk, chunk_frames) != 0)
             Sleep(2);
         else
+        {
+            device->out_samples_total += chunk_samples;
             have_pending_chunk = 0;
+        }
     }
 
     return 0;
@@ -205,6 +214,42 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
         }
 
         LeaveCriticalSection(&device->lock);
+    }
+
+    device->in_samples_total += sample_count;
+
+    {
+        DWORD now = GetTickCount();
+        if (device->stats_last_tick == 0)
+            device->stats_last_tick = now;
+
+        if (now - device->stats_last_tick >= 1000)
+        {
+            uint64_t in_delta = device->in_samples_total - device->in_samples_last;
+            uint64_t out_delta = device->out_samples_total - device->out_samples_last;
+            size_t fill_samples = 0;
+
+            EnterCriticalSection(&device->lock);
+            fill_samples = device->ring_fill_samples;
+            LeaveCriticalSection(&device->lock);
+
+            uint32_t in_frames_per_s = (device->channels > 0) ? (uint32_t)(in_delta / device->channels) : 0;
+            uint32_t out_frames_per_s = (device->channels > 0) ? (uint32_t)(out_delta / device->channels) : 0;
+            uint32_t fill_ms = (device->sample_rate > 0 && device->channels > 0)
+                                   ? (uint32_t)((fill_samples * 1000ULL) / ((uint64_t)device->sample_rate * device->channels))
+                                   : 0;
+
+            printf("[audio_stats] in=%u fps out=%u fps ring=%u ms cfg=%uHz/%uch\\n",
+                   in_frames_per_s,
+                   out_frames_per_s,
+                   fill_ms,
+                   device->sample_rate,
+                   device->channels);
+
+            device->in_samples_last = device->in_samples_total;
+            device->out_samples_last = device->out_samples_total;
+            device->stats_last_tick = now;
+        }
     }
 
     if (device->log_file)

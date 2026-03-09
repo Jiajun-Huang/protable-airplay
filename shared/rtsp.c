@@ -665,6 +665,7 @@ int rtsp_server_start(rtsp_instance_t *instance)
                 {
                     size_t cur_len = instance->rx_lengths[i];
                     size_t append_len = (size_t)bytes_received;
+                    int is_new_request_start = (cur_len == 0);
 
                     if (cur_len + append_len > RTSP_RX_BUFFER_SIZE)
                     {
@@ -678,7 +679,8 @@ int rtsp_server_start(rtsp_instance_t *instance)
                     instance->rx_lengths[i] = cur_len + append_len;
                     printf("[RTSP] Received data from %s:%u (%zu bytes buffered)\n",
                            client->ip, client->port, instance->rx_lengths[i]);
-                    rtsp_log_request_preview(instance->rx_buffers[i], instance->rx_lengths[i]);
+                    if (is_new_request_start)
+                        rtsp_log_request_preview(instance->rx_buffers[i], instance->rx_lengths[i]);
                     while (instance->rx_lengths[i] > 0)
                     {
                         rtsp_request_t parsed;
