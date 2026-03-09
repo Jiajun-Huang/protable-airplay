@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "spsc_ring.h"
+
 typedef struct
 {
     uint32_t in_frames_per_s;
@@ -17,11 +19,7 @@ typedef struct
     uint8_t channels;
     uint8_t bits_per_sample;
 
-    int16_t *ring;
-    size_t ring_capacity_samples;
-    size_t ring_read_pos;
-    size_t ring_write_pos;
-    size_t ring_fill_samples;
+    spsc_ring_t ring;
 
     int16_t *mix_chunk;
     size_t chunk_frames;
