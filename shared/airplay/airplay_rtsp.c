@@ -1,8 +1,39 @@
 #include "airplay_rtsp.h"
-#include "crypto_utils.h"
+#include "airplay_auth.h"
 #include "network_util.h"
+#include "log.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+static sdp_session_t g_announced_session;
+static volatile int g_has_announced_session = 0;
+static volatile int g_airplay_rtsp_recording = 0;
+
+static int parse_transport_port(const char *transport, const char *key, uint16_t *out_port)
+{
+    const char *p;
+    char *endptr;
+    unsigned long v;
+
+    if (!transport || !key || !out_port)
+        return -1;
+
+    p = strstr(transport, key);
+    if (!p)
+        return -1;
+    p += strlen(key);
+    if (*p != '=')
+        return -1;
+    p++;
+
+    v = strtoul(p, &endptr, 10);
+    if (endptr == p || v > 65535)
+        return -1;
+
+    *out_port = (uint16_t)v;
+    return 0;
+}
 
 static const char *get_header_value(const rtsp_request_t *request, const char *name)
 {
@@ -47,7 +78,7 @@ int airplay_rtsp_options(rtsp_instance_t *instance, tcp_client_t *client, const 
     snprintf(extra_headers, sizeof(extra_headers),
              "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET\r\n");
 
-    printf("[RTSP] Sending OPTIONS response to %s:%u\n", client->ip, client->port);
+    LOG_RTSP_INFO("Sending OPTIONS response to %s:%u\n", client->ip, client->port);
 
     challenge = get_header_value(request, "Apple-Challenge");
     if (challenge && challenge[0] != '\0')
@@ -63,11 +94,11 @@ int airplay_rtsp_options(rtsp_instance_t *instance, tcp_client_t *client, const 
                 strncat(extra_headers, "Apple-Response: ", sizeof(extra_headers) - strlen(extra_headers) - 1);
                 strncat(extra_headers, apple_response, sizeof(extra_headers) - strlen(extra_headers) - 1);
                 strncat(extra_headers, "\r\n", sizeof(extra_headers) - strlen(extra_headers) - 1);
-                printf("[RTSP] Added Apple-Response header\n");
+                LOG_RTSP_INFO("Added Apple-Response header\n");
             }
             else
             {
-                printf("[RTSP] Failed to generate Apple-Response\n");
+                LOG_RTSP_ERROR("Failed to generate Apple-Response\n");
             }
         }
     }
@@ -82,5 +113,162 @@ int airplay_rtsp_describe(rtsp_instance_t *instance, tcp_client_t *client, const
 int airplay_rtsp_announce(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
 {
     (void)instance;
+
+    if (request && request->body && request->body_len > 0)
+    {
+        sdp_session_t parsed;
+        if (sdp_parse(request->body, request->body_len, &parsed) == 0)
+        {
+            g_announced_session = parsed;
+            g_has_announced_session = 1;
+            LOG_RTSP_INFO("ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
+                          parsed.codec, parsed.sample_rate, parsed.channels, parsed.bits_per_sample);
+        }
+        else
+        {
+            LOG_RTSP_ERROR("ANNOUNCE SDP parse failed\n");
+        }
+    }
+
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_post(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    const char *content_type_hdr;
+    (void)instance;
+
+    content_type_hdr = get_header_value(request, "Content-Type");
+    LOG_RTSP_INFO("POST accepted (Content-Type=%s)\n",
+                  content_type_hdr ? content_type_hdr : "none");
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_setup(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    const char *transport_hdr;
+    uint16_t client_timing = 0;
+    uint16_t client_control = 0;
+    char extra_headers[512];
+    (void)instance;
+
+    transport_hdr = get_header_value(request, "Transport");
+    if (transport_hdr)
+    {
+        parse_transport_port(transport_hdr, "timing_port", &client_timing);
+        parse_transport_port(transport_hdr, "control_port", &client_control);
+    }
+
+    LOG_RTSP_INFO("SETUP cseq=%u client=%s:%u timing=%u control=%u\n",
+                  request->cseq,
+                  client->ip,
+                  client->port,
+                  client_timing,
+                  client_control);
+
+    snprintf(extra_headers, sizeof(extra_headers),
+             "Session: 00000001\r\n"
+             "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=6000;control_port=6001;timing_port=6002\r\n"
+             "Audio-Jack-Status: connected\r\n");
+    return rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+}
+
+int airplay_rtsp_get_parameter(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    const uint8_t *body = NULL;
+    size_t body_len = 0;
+    const char *ct = "Content-Type: text/parameters\r\n";
+    static const char volume_body[] = "volume: -20.000000\r\n";
+    (void)instance;
+
+    if (request->body && request->body_len >= 6 &&
+        memcmp(request->body, "volume", 6) == 0)
+    {
+        body = (const uint8_t *)volume_body;
+        body_len = strlen(volume_body);
+    }
+
+    return rtsp_send_response(client, 200, "OK", request->cseq, ct, body, body_len);
+}
+
+int airplay_rtsp_set_parameter(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    (void)instance;
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_flush(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    (void)instance;
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_flushbuffered(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    (void)instance;
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_teardown(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    (void)instance;
+    g_airplay_rtsp_recording = 0;
+    airplay_rtsp_clear_announced_session();
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_pause(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    (void)instance;
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_record(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    const char *record_headers = "Session: 00000001\r\nAudio-Latency: 2205\r\n";
+    const char *session_hdr = get_header_value(request, "Session");
+    (void)instance;
+
+    g_airplay_rtsp_recording = 1;
+    LOG_RTSP_INFO("RECORD cseq=%u client=%s:%u session=%s state=recording\n",
+                  request->cseq,
+                  client->ip,
+                  client->port,
+                  (session_hdr && session_hdr[0] != '\0') ? session_hdr : "none");
+    return rtsp_send_response(client, 200, "OK", request->cseq, record_headers, NULL, 0);
+}
+
+int airplay_rtsp_play(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
+{
+    const char *session_hdr = get_header_value(request, "Session");
+    char extra_headers[192];
+    (void)instance;
+
+    if (session_hdr && session_hdr[0] != '\0')
+    {
+        snprintf(extra_headers, sizeof(extra_headers), "Session: %s\r\n", session_hdr);
+        return rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+    }
+
+    return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+}
+
+int airplay_rtsp_get_announced_session(sdp_session_t *out_session)
+{
+    if (!out_session || !g_has_announced_session)
+        return -1;
+
+    *out_session = g_announced_session;
+    return 0;
+}
+
+void airplay_rtsp_clear_announced_session(void)
+{
+    memset(&g_announced_session, 0, sizeof(g_announced_session));
+    g_has_announced_session = 0;
+}
+
+int airplay_rtsp_is_recording(void)
+{
+    return g_airplay_rtsp_recording;
 }

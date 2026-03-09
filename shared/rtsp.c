@@ -6,36 +6,6 @@
 #include <string.h>
 #include "airplay/airplay_rtsp.h"
 
-static sdp_session_t g_announced_session;
-static volatile int g_has_announced_session = 0;
-
-static volatile int g_rtsp_recording = 0;
-
-static int parse_transport_port(const char *transport, const char *key, uint16_t *out_port)
-{
-    const char *p;
-    char *endptr;
-    unsigned long v;
-
-    if (!transport || !key || !out_port)
-        return -1;
-
-    p = strstr(transport, key);
-    if (!p)
-        return -1;
-    p += strlen(key);
-    if (*p != '=')
-        return -1;
-    p++;
-
-    v = strtoul(p, &endptr, 10);
-    if (endptr == p || v > 65535)
-        return -1;
-
-    *out_port = (uint16_t)v;
-    return 0;
-}
-
 static int ascii_ieq(const char *a, const char *b)
 {
     while (*a && *b)
@@ -267,32 +237,30 @@ static int parse_rtsp_request(uint8_t *buffer, size_t buffer_len, rtsp_request_t
             continue;
         }
 
+        char *colon = strchr(line, ':');
+        char header_name[128];
+        char header_value[256];
+
+        if (!colon)
+            continue;
+
+        *colon = '\0';
+        colon++;
+
+        trim_and_copy(header_name, sizeof(header_name), line);
+        trim_and_copy(header_value, sizeof(header_value), colon);
+        printf("[RTSP] Parsed header: '%s: %s'\n", header_name, header_value);
+        if (out_req->header_count < (sizeof(out_req->headers) / sizeof(out_req->headers[0])))
         {
-            char *colon = strchr(line, ':');
-            char header_name[128];
-            char header_value[256];
-
-            if (!colon)
-                continue;
-
-            *colon = '\0';
-            colon++;
-
-            trim_and_copy(header_name, sizeof(header_name), line);
-            trim_and_copy(header_value, sizeof(header_value), colon);
-            printf("[RTSP] Parsed header: '%s: %s'\n", header_name, header_value);
-            if (out_req->header_count < (sizeof(out_req->headers) / sizeof(out_req->headers[0])))
-            {
-                rtsp_header_t *h = &out_req->headers[out_req->header_count++];
-                trim_and_copy(h->name, sizeof(h->name), header_name);
-                trim_and_copy(h->value, sizeof(h->value), header_value);
-            }
-
-            if (ascii_ieq(header_name, "CSeq"))
-                out_req->cseq = (uint32_t)strtoul(header_value, NULL, 10);
-            else if (ascii_ieq(header_name, "Content-Length"))
-                content_length = (uint32_t)strtoul(header_value, NULL, 10);
+            rtsp_header_t *h = &out_req->headers[out_req->header_count++];
+            trim_and_copy(h->name, sizeof(h->name), header_name);
+            trim_and_copy(h->value, sizeof(h->value), header_value);
         }
+
+        if (ascii_ieq(header_name, "CSeq"))
+            out_req->cseq = (uint32_t)strtoul(header_value, NULL, 10);
+        else if (ascii_ieq(header_name, "Content-Length"))
+            content_length = (uint32_t)strtoul(header_value, NULL, 10);
     }
 
     out_req->body = buffer + headers_end;
@@ -485,117 +453,38 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
         handler_rc = airplay_rtsp_describe(instance, client, request);
         break;
     case RTSP_METHOD_ANNOUNCE:
-        if (request->body && request->body_len > 0)
-        {
-            sdp_session_t parsed;
-            if (sdp_parse(request->body, request->body_len, &parsed) == 0)
-            {
-                g_announced_session = parsed;
-                g_has_announced_session = 1;
-                printf("[RTSP] ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
-                       parsed.codec, parsed.sample_rate, parsed.channels, parsed.bits_per_sample);
-            }
-            else
-            {
-                printf("[RTSP] ANNOUNCE SDP parse failed\n");
-            }
-        }
         handler_rc = airplay_rtsp_announce(instance, client, request);
         break;
     case RTSP_METHOD_POST:
-    {
-        const char *content_type_hdr = rtsp_get_header_value(request, "Content-Type");
-        printf("[RTSP] POST accepted (Content-Type=%s)\n",
-               content_type_hdr ? content_type_hdr : "none");
-        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+        handler_rc = airplay_rtsp_post(instance, client, request);
         break;
-    }
     case RTSP_METHOD_SETUP:
-    {
-        const char *transport_hdr = rtsp_get_header_value(request, "Transport");
-        uint16_t client_timing = 0;
-        uint16_t client_control = 0;
-        char extra_headers[512];
-
-        if (transport_hdr)
-        {
-            parse_transport_port(transport_hdr, "timing_port", &client_timing);
-            parse_transport_port(transport_hdr, "control_port", &client_control);
-        }
-
-        printf("[RTSP] SETUP cseq=%u client=%s:%u timing=%u control=%u\n",
-               request->cseq,
-               client->ip,
-               client->port,
-               client_timing,
-               client_control);
-
-        snprintf(extra_headers, sizeof(extra_headers),
-                 "Session: 00000001\r\n"
-                 "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=6000;control_port=6001;timing_port=6002\r\n"
-                 "Audio-Jack-Status: connected\r\n");
-        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
+        handler_rc = airplay_rtsp_setup(instance, client, request);
         break;
-    }
     case RTSP_METHOD_GET_PARAMETER:
-    {
-        const uint8_t *body = NULL;
-        size_t body_len = 0;
-        const char *ct = "Content-Type: text/parameters\r\n";
-        static const char volume_body[] = "volume: -20.000000\r\n";
-
-        if (request->body && request->body_len >= 6 &&
-            memcmp(request->body, "volume", 6) == 0)
-        {
-            body = (const uint8_t *)volume_body;
-            body_len = strlen(volume_body);
-        }
-
-        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, ct, body, body_len);
+        handler_rc = airplay_rtsp_get_parameter(instance, client, request);
         break;
-    }
     case RTSP_METHOD_SET_PARAMETER:
+        handler_rc = airplay_rtsp_set_parameter(instance, client, request);
+        break;
     case RTSP_METHOD_FLUSH:
+        handler_rc = airplay_rtsp_flush(instance, client, request);
+        break;
     case RTSP_METHOD_FLUSHBUFFERED:
+        handler_rc = airplay_rtsp_flushbuffered(instance, client, request);
+        break;
     case RTSP_METHOD_TEARDOWN:
+        handler_rc = airplay_rtsp_teardown(instance, client, request);
+        break;
     case RTSP_METHOD_PAUSE:
-        if (request->method == RTSP_METHOD_TEARDOWN)
-        {
-            g_rtsp_recording = 0;
-            g_has_announced_session = 0;
-        }
-        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
+        handler_rc = airplay_rtsp_pause(instance, client, request);
         break;
     case RTSP_METHOD_RECORD:
-    {
-        const char *record_headers = "Session: 00000001\r\nAudio-Latency: 2205\r\n";
-        const char *session_hdr = rtsp_get_header_value(request, "Session");
-
-        g_rtsp_recording = 1;
-        printf("[RTSP] RECORD cseq=%u client=%s:%u session=%s state=recording\n",
-               request->cseq,
-               client->ip,
-               client->port,
-               (session_hdr && session_hdr[0] != '\0') ? session_hdr : "none");
-        handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, record_headers, NULL, 0);
+        handler_rc = airplay_rtsp_record(instance, client, request);
         break;
-    }
     case RTSP_METHOD_PLAY:
-    {
-        const char *session_hdr = rtsp_get_header_value(request, "Session");
-        char extra_headers[192];
-
-        if (session_hdr && session_hdr[0] != '\0')
-        {
-            snprintf(extra_headers, sizeof(extra_headers), "Session: %s\r\n", session_hdr);
-            handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
-        }
-        else
-        {
-            handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
-        }
+        handler_rc = airplay_rtsp_play(instance, client, request);
         break;
-    }
     default:
         printf("[RTSP] No handler implemented for method %s, sending 501\n", method_to_str(request->method));
         rtsp_send_response(client, 501, "Not Implemented", request->cseq, NULL, NULL, 0);
@@ -611,22 +500,7 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
 
 int rtsp_is_recording(void)
 {
-    return g_rtsp_recording;
-}
-
-int rtsp_get_announced_session(sdp_session_t *out_session)
-{
-    if (!out_session || !g_has_announced_session)
-        return -1;
-
-    *out_session = g_announced_session;
-    return 0;
-}
-
-void rtsp_clear_announced_session(void)
-{
-    memset(&g_announced_session, 0, sizeof(g_announced_session));
-    g_has_announced_session = 0;
+    return airplay_rtsp_is_recording();
 }
 
 int rtsp_server_start(rtsp_instance_t *instance)
@@ -666,7 +540,6 @@ int rtsp_server_start(rtsp_instance_t *instance)
                     size_t cur_len = instance->rx_lengths[i];
                     size_t append_len = (size_t)bytes_received;
                     // True only when this TCP fragment starts a new RTSP message.
-                    int is_new_request_start = (cur_len == 0);
 
                     if (cur_len + append_len > RTSP_RX_BUFFER_SIZE)
                     {
@@ -676,13 +549,12 @@ int rtsp_server_start(rtsp_instance_t *instance)
                         continue;
                     }
 
+                    // received data may contain multiple RTSP requests back-to-back, so append to buffer and try parsing as many as possible.
                     memcpy(instance->rx_buffers[i] + cur_len, recv_tmp, append_len);
                     instance->rx_lengths[i] = cur_len + append_len;
                     printf("[RTSP] Received data from %s:%u (%zu bytes buffered)\n",
                            client->ip, client->port, instance->rx_lengths[i]);
-                    if (is_new_request_start)
-                        // Avoid printing the same request line for every body fragment of large SET_PARAMETER.
-                        rtsp_log_request_preview(instance->rx_buffers[i], instance->rx_lengths[i]);
+
                     while (instance->rx_lengths[i] > 0)
                     {
                         rtsp_request_t parsed;
@@ -701,12 +573,16 @@ int rtsp_server_start(rtsp_instance_t *instance)
                         }
                         rtsp_handle_request(instance, client, &parsed);
 
+                        // Remove parsed request from buffer and try parsing next one if present.
+                        // A single TCP read can contain multiple RTSP requests back-to-back.
+                        // After handling one request, this keeps the next request (or partial next request) in place for the next parse loop iteration.
                         if (consumed < instance->rx_lengths[i])
                         {
                             memmove(instance->rx_buffers[i],
                                     instance->rx_buffers[i] + consumed,
                                     instance->rx_lengths[i] - consumed);
                         }
+
                         instance->rx_lengths[i] -= consumed;
                     }
                 }

@@ -1,4 +1,4 @@
-#include "crypto_utils.h"
+#include "airplay_auth.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -34,7 +34,7 @@ static const char airport_private_key[] =
     "2gG0N5hvJpzwwhbhXqFKA4zaaSrw622wDniAK5MlIE0tIAKKP4yxNGjoD2QYjhBGuhvkWKY=\n"
     "-----END RSA PRIVATE KEY-----\0";
 
-char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
+static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
 {
     if (!data || len == 0)
         return NULL;
@@ -59,7 +59,7 @@ char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
     return encoded;
 }
 
-uint8_t *base64_decode(const char *str, size_t *out_len)
+static uint8_t *base64_decode(const char *str, size_t *out_len)
 {
     if (!str)
         return NULL;

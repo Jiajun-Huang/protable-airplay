@@ -62,10 +62,10 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
     int result = -1;
     if (pipeline->alac_decoder.frame_length > 0)
     {
-        result = alac_decode_frame(&pipeline->alac_decoder,
-                                   decode_input, payload_len,
-                                   output, output_samples,
-                                   MAX_AUDIO_BUFFER_SAMPLES);
+        result = alac_decoder_decode_frame(&pipeline->alac_decoder,
+                                           decode_input, payload_len,
+                                           output, output_samples,
+                                           MAX_AUDIO_BUFFER_SAMPLES);
     }
     else
     {

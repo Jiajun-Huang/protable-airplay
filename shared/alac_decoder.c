@@ -5,15 +5,7 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#define alac_create shairport_alac_create
-#define alac_decode_frame shairport_alac_decode_frame
-#define alac_allocate_buffers shairport_alac_allocate_buffers
-#define alac_free shairport_alac_free
-#include "../../shairport-sync/alac.h"
-#undef alac_create
-#undef alac_decode_frame
-#undef alac_allocate_buffers
-#undef alac_free
+#include "alac.h"
 
 int alac_decoder_init(alac_decoder_t *decoder,
                       const uint32_t *fmtp, size_t fmtp_count,
@@ -53,7 +45,7 @@ int alac_decoder_init(alac_decoder_t *decoder,
         printf("\n");
     }
 
-    alac_file *alac = shairport_alac_create(decoder->bit_depth, decoder->channels);
+    alac_file *alac = alac_create(decoder->bit_depth, decoder->channels);
     if (!alac)
         return -1;
 
@@ -71,7 +63,7 @@ int alac_decoder_init(alac_decoder_t *decoder,
     alac->setinfo_82 = (decoder->fmtp_count > 8) ? decoder->fmtp[8] : 0;
     alac->setinfo_86 = (decoder->fmtp_count > 9) ? decoder->fmtp[9] : 0;
     alac->setinfo_8a_rate = decoder->sample_rate;
-    shairport_alac_allocate_buffers(alac);
+    alac_allocate_buffers(alac);
 
     decoder->impl = (void *)alac;
 
@@ -93,9 +85,9 @@ int alac_decoder_init(alac_decoder_t *decoder,
     return 0;
 }
 
-int alac_decode_frame(alac_decoder_t *decoder,
-                      const uint8_t *input, size_t input_len,
-                      int16_t *output, size_t *output_samples, size_t max_output_samples)
+int alac_decoder_decode_frame(alac_decoder_t *decoder,
+                              const uint8_t *input, size_t input_len,
+                              int16_t *output, size_t *output_samples, size_t max_output_samples)
 {
     if (!decoder || !decoder->impl || !input || !output || !output_samples || input_len == 0)
         return -1;
@@ -110,7 +102,7 @@ int alac_decode_frame(alac_decoder_t *decoder,
 
     int output_bytes = (int)max_output_bytes;
 
-    shairport_alac_decode_frame(alac, (unsigned char *)input, output, &output_bytes);
+    alac_decode_frame(alac, (unsigned char *)input, output, &output_bytes);
 
     if (output_bytes <= 0)
         return -1;
@@ -128,6 +120,6 @@ void alac_decoder_close(alac_decoder_t *decoder)
     if (!decoder || !decoder->impl)
         return;
 
-    shairport_alac_free((alac_file *)decoder->impl);
+    alac_free((alac_file *)decoder->impl);
     decoder->impl = NULL;
 }

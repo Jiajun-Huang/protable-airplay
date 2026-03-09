@@ -6,6 +6,7 @@
 #include "audio_pipeline.h"
 #include "audio_output.h"
 #include "airplay/airplay_discovery.h"
+#include "airplay/airplay_rtsp.h"
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -65,7 +66,7 @@ static DWORD WINAPI rtp_thread_proc(LPVOID param)
             if (rec)
             {
                 sdp_session_t session;
-                if (rtsp_get_announced_session(&session) != 0)
+                if (airplay_rtsp_get_announced_session(&session) != 0)
                 {
                     printf("[audio] No ANNOUNCE SDP yet; waiting before playback\n");
                     Sleep(10);
@@ -105,7 +106,7 @@ static DWORD WINAPI rtp_thread_proc(LPVOID param)
                     audio_pipeline_stop(&g_audio_pipeline);
                     audio_output_close(g_audio_output);
                     g_audio_output = NULL;
-                    rtsp_clear_announced_session();
+                    airplay_rtsp_clear_announced_session();
                     printf("[audio] Output closed\n");
                 }
             }
