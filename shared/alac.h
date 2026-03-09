@@ -32,6 +32,9 @@
 
 #include <stdint.h>
 
+#define ALAC_MAX_SAMPLES_PER_FRAME 8192
+#define ALAC_MAX_CONTEXTS 4
+
 typedef struct alac_file alac_file;
 
 alac_file *alac_create(int samplesize, int numchannels);
@@ -40,10 +43,13 @@ void alac_set_info(alac_file *alac, char *inputbuffer);
 void alac_allocate_buffers(alac_file *alac);
 void alac_free(alac_file *alac);
 
-struct alac_file {
+struct alac_file
+{
   unsigned char *input_buffer;
   int input_buffer_bitaccumulator; /* used so we can do arbitrary
                                       bit reads */
+
+  int in_use;
 
   int samplesize;
   int numchannels;
@@ -58,6 +64,15 @@ struct alac_file {
 
   int32_t *uncompressed_bytes_buffer_a;
   int32_t *uncompressed_bytes_buffer_b;
+
+  int32_t predicterror_buffer_a_storage[ALAC_MAX_SAMPLES_PER_FRAME];
+  int32_t predicterror_buffer_b_storage[ALAC_MAX_SAMPLES_PER_FRAME];
+
+  int32_t outputsamples_buffer_a_storage[ALAC_MAX_SAMPLES_PER_FRAME];
+  int32_t outputsamples_buffer_b_storage[ALAC_MAX_SAMPLES_PER_FRAME];
+
+  int32_t uncompressed_bytes_buffer_a_storage[ALAC_MAX_SAMPLES_PER_FRAME];
+  int32_t uncompressed_bytes_buffer_b_storage[ALAC_MAX_SAMPLES_PER_FRAME];
 
   /* stuff from setinfo */
   uint32_t setinfo_max_samples_per_frame; /* 0x1000 = 4096 */ /* max samples per frame? */

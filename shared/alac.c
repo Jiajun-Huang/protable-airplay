@@ -39,6 +39,8 @@ static const int host_bigendian = 0;
 
 #include "alac.h"
 
+static alac_file g_alac_pool[ALAC_MAX_CONTEXTS];
+
 #define _Swap32(v)                                                                                   \
   do                                                                                                 \
   {                                                                                                  \
@@ -87,34 +89,39 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
 
 void alac_free(alac_file *alac)
 {
-  if (alac->predicterror_buffer_a)
-    free(alac->predicterror_buffer_a);
-  if (alac->predicterror_buffer_b)
-    free(alac->predicterror_buffer_b);
+  if (!alac)
+    return;
 
-  if (alac->outputsamples_buffer_a)
-    free(alac->outputsamples_buffer_a);
-  if (alac->outputsamples_buffer_b)
-    free(alac->outputsamples_buffer_b);
-
-  if (alac->uncompressed_bytes_buffer_a)
-    free(alac->uncompressed_bytes_buffer_a);
-  if (alac->uncompressed_bytes_buffer_b)
-    free(alac->uncompressed_bytes_buffer_b);
-
-  free(alac);
+  memset(alac, 0, sizeof(*alac));
 }
 
 void alac_allocate_buffers(alac_file *alac)
 {
-  alac->predicterror_buffer_a = malloc(alac->setinfo_max_samples_per_frame * 4);
-  alac->predicterror_buffer_b = malloc(alac->setinfo_max_samples_per_frame * 4);
+  size_t byte_count;
 
-  alac->outputsamples_buffer_a = malloc(alac->setinfo_max_samples_per_frame * 4);
-  alac->outputsamples_buffer_b = malloc(alac->setinfo_max_samples_per_frame * 4);
+  if (!alac)
+    return;
 
-  alac->uncompressed_bytes_buffer_a = malloc(alac->setinfo_max_samples_per_frame * 4);
-  alac->uncompressed_bytes_buffer_b = malloc(alac->setinfo_max_samples_per_frame * 4);
+  if (alac->setinfo_max_samples_per_frame == 0 ||
+      alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
+  {
+    alac->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
+  }
+
+  alac->predicterror_buffer_a = alac->predicterror_buffer_a_storage;
+  alac->predicterror_buffer_b = alac->predicterror_buffer_b_storage;
+  alac->outputsamples_buffer_a = alac->outputsamples_buffer_a_storage;
+  alac->outputsamples_buffer_b = alac->outputsamples_buffer_b_storage;
+  alac->uncompressed_bytes_buffer_a = alac->uncompressed_bytes_buffer_a_storage;
+  alac->uncompressed_bytes_buffer_b = alac->uncompressed_bytes_buffer_b_storage;
+
+  byte_count = (size_t)alac->setinfo_max_samples_per_frame * sizeof(int32_t);
+  memset(alac->predicterror_buffer_a, 0, byte_count);
+  memset(alac->predicterror_buffer_b, 0, byte_count);
+  memset(alac->outputsamples_buffer_a, 0, byte_count);
+  memset(alac->outputsamples_buffer_b, 0, byte_count);
+  memset(alac->uncompressed_bytes_buffer_a, 0, byte_count);
+  memset(alac->uncompressed_bytes_buffer_b, 0, byte_count);
 }
 
 void alac_set_info(alac_file *alac, char *inputbuffer)
@@ -159,6 +166,13 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
   alac->setinfo_8a_rate = *(uint32_t *)ptr;
   if (!host_bigendian)
     _Swap32(alac->setinfo_8a_rate);
+
+  if (alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
+  {
+    fprintf(stderr, "[alac] Clamping max_samples_per_frame %u to %u for static buffers.\n",
+            alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
+    alac->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
+  }
 
   alac_allocate_buffers(alac);
 }
@@ -1113,17 +1127,23 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
 
 alac_file *alac_create(int samplesize, int numchannels)
 {
-  alac_file *newfile = malloc(sizeof(alac_file));
-  if (newfile)
+  int i;
+  for (i = 0; i < ALAC_MAX_CONTEXTS; i++)
   {
-    memset(newfile, 0, sizeof(alac_file));
-    newfile->samplesize = samplesize;
-    newfile->numchannels = numchannels;
-    newfile->bytespersample = (samplesize / 8) * numchannels;
+    if (!g_alac_pool[i].in_use)
+    {
+      alac_file *newfile = &g_alac_pool[i];
+      memset(newfile, 0, sizeof(*newfile));
+      newfile->in_use = 1;
+      newfile->samplesize = samplesize;
+      newfile->numchannels = numchannels;
+      newfile->bytespersample = (samplesize / 8) * numchannels;
+      newfile->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
+      alac_allocate_buffers(newfile);
+      return newfile;
+    }
   }
-  else
-  {
-    fprintf(stderr, "FIXME: can not allocate memory for a new file in alac_cxreate.");
-  }
-  return newfile;
+
+  fprintf(stderr, "[alac] No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
+  return NULL;
 }

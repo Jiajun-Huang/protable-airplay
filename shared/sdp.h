@@ -33,15 +33,15 @@ typedef struct
 
     // ALAC-specific
     uint8_t alac_config[64]; // ALAC magic cookie
-    size_t alac_config_len;
-    uint32_t alac_fmtp[12];
-    size_t alac_fmtp_count;
+    size_t alac_config_len;  // Length of ALAC config
+    uint32_t alac_fmtp[12];  // Parsed fmtp parameters for ALAC
+    size_t alac_fmtp_count;  // Number of valid fmtp parameters
 
     // Encryption
-    uint8_t aes_key[16]; // AES-128 key
-    uint8_t aes_key_encrypted[512];
-    size_t aes_key_encrypted_len;
-    uint8_t aes_iv[16]; // AES-128 IV
+    uint8_t aes_key[16];            // AES-128 key
+    uint8_t aes_key_encrypted[512]; // RSA-encrypted AES key from SDP (base64 or binary)
+    size_t aes_key_encrypted_len;   // Length of encrypted AES key
+    uint8_t aes_iv[16];             // AES-128 IV
     int has_encryption;
 
     // RTP
