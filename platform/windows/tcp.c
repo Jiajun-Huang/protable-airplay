@@ -198,6 +198,17 @@ int tcp_accept(tcp_socket_t *server, tcp_client_t *client, int timeout_ms)
 
     printf("[TCP] Accepted connection from %s:%u\n", client->ip, client->port);
 
+    // client count
+    if (server->client_count < TCP_MAX_CLIENTS)
+    {
+        server->clients[server->client_count++] = *client;
+    }
+    else
+    {
+        printf("[TCP] Maximum clients reached, closing new connection\n");
+        closesocket(client_sock);
+        return -1;
+    }
     return 0;
 }
 
