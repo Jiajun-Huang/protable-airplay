@@ -665,6 +665,7 @@ int rtsp_server_start(rtsp_instance_t *instance)
                 {
                     size_t cur_len = instance->rx_lengths[i];
                     size_t append_len = (size_t)bytes_received;
+                    // True only when this TCP fragment starts a new RTSP message.
                     int is_new_request_start = (cur_len == 0);
 
                     if (cur_len + append_len > RTSP_RX_BUFFER_SIZE)
@@ -680,6 +681,7 @@ int rtsp_server_start(rtsp_instance_t *instance)
                     printf("[RTSP] Received data from %s:%u (%zu bytes buffered)\n",
                            client->ip, client->port, instance->rx_lengths[i]);
                     if (is_new_request_start)
+                        // Avoid printing the same request line for every body fragment of large SET_PARAMETER.
                         rtsp_log_request_preview(instance->rx_buffers[i], instance->rx_lengths[i]);
                     while (instance->rx_lengths[i] > 0)
                     {
@@ -688,6 +690,7 @@ int rtsp_server_start(rtsp_instance_t *instance)
                         int rc = parse_rtsp_request(instance->rx_buffers[i], instance->rx_lengths[i], &parsed, &consumed);
 
                         if (rc == 0)
+                            // Full body not received yet; keep buffering and retry next network cycle.
                             break; // Need more bytes
 
                         if (rc < 0)

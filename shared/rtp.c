@@ -124,6 +124,8 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
 
     if (receiver->audio_open && udp_poll(&receiver->audio_socket, timeout_ms) > 0)
     {
+        // IMPORTANT: drain all queued UDP packets each poll cycle.
+        // Reading only one packet per cycle quickly causes kernel-buffer backlog and packet loss.
         for (;;)
         {
             char src_ip[64] = {0};
@@ -137,35 +139,34 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
             if (len <= 0)
                 break;
 
+            rtp_packet_t packet;
+            activity = 1;
+            receiver->audio_packet_count++;
+
+            if (rtp_parse_packet(receiver->audio_buffer, (size_t)len, &packet) == 0)
             {
-                rtp_packet_t packet;
-                activity = 1;
-                receiver->audio_packet_count++;
-
-                if (rtp_parse_packet(receiver->audio_buffer, (size_t)len, &packet) == 0)
+                if (receiver->audio_packet_count <= 2 || (receiver->audio_packet_count % 2000) == 0)
                 {
-                    if (receiver->audio_packet_count <= 2 || (receiver->audio_packet_count % 2000) == 0)
-                    {
-                        printf("[rtp] audio pkt #%u from %s:%u seq=%u ts=%u payload=%zu\n",
-                               receiver->audio_packet_count,
-                               src_ip,
-                               src_port,
-                               packet.header.sequence,
-                               packet.header.timestamp,
-                               packet.payload_len);
-                        if (packet.payload && packet.payload_len > 0)
-                            rtp_log_payload_preview(packet.payload, packet.payload_len);
-                    }
-
-                    if (receiver->config.audio_cb)
-                        receiver->config.audio_cb(&packet, receiver->config.user_data);
+                    printf("[rtp] audio pkt #%u from %s:%u seq=%u ts=%u payload=%zu\n",
+                           receiver->audio_packet_count,
+                           src_ip,
+                           src_port,
+                           packet.header.sequence,
+                           packet.header.timestamp,
+                           packet.payload_len);
+                    if (packet.payload && packet.payload_len > 0)
+                        rtp_log_payload_preview(packet.payload, packet.payload_len);
                 }
+
+                if (receiver->config.audio_cb)
+                    receiver->config.audio_cb(&packet, receiver->config.user_data);
             }
         }
     }
 
     if (receiver->control_open && udp_poll(&receiver->control_socket, 0) > 0)
     {
+        // Keep control/timing sockets drained too, otherwise stale packets accumulate.
         for (;;)
         {
             int len = udp_receive(&receiver->control_socket,

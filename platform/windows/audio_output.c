@@ -6,6 +6,7 @@
 #include <string.h>
 
 // Stability-first profile: larger preroll and buffer reduce intermittent gaps.
+// These values trade latency for smoother playback under packet jitter.
 #define AUDIO_RING_SECONDS 3
 #define AUDIO_CHUNK_FRAMES 352
 #define AUDIO_PREROLL_MS 180
@@ -101,6 +102,7 @@ static DWORD WINAPI audio_play_thread_proc(LPVOID param)
             else if (started)
             {
                 // Keep output paced in real-time: play available samples and pad the rest with silence.
+                // ATTENTION: waiting for a full chunk here causes audible slow-down under packet loss.
                 size_t available = device->ring_fill_samples;
                 if (available > chunk_samples)
                     available = chunk_samples;
@@ -197,6 +199,7 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
         size_t free_samples = device->ring_capacity_samples - device->ring_fill_samples;
         if (count > free_samples)
         {
+            // Drop oldest data first to keep stream close to real-time instead of accumulating delay.
             size_t drop = count - free_samples;
             device->ring_read_pos = (device->ring_read_pos + drop) % device->ring_capacity_samples;
             device->ring_fill_samples -= drop;
@@ -245,6 +248,8 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
                    fill_ms,
                    device->sample_rate,
                    device->channels);
+            // Debug guide: in~=out~=sample_rate indicates healthy flow.
+            // If in is near half-rate, investigate decode output size or RTP loss first.
 
             device->in_samples_last = device->in_samples_total;
             device->out_samples_last = device->out_samples_total;

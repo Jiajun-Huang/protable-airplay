@@ -67,6 +67,7 @@ int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key, size_t encrypted_le
         goto cleanup;
 
     // AirPlay rsaaeskey uses RSA-OAEP with SHA1.
+    // Changing padding/hash here will break key unwrap for valid senders.
     mbedtls_rsa_context *rsa = mbedtls_pk_rsa(pk);
     mbedtls_rsa_set_padding(rsa, MBEDTLS_RSA_PKCS_V21, MBEDTLS_MD_SHA1);
 
@@ -111,7 +112,8 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t 
     mbedtls_aes_context aes;
     unsigned char iv[16];
     mbedtls_aes_init(&aes);
-    // AirPlay audio decryption resets CBC IV for each packet.
+    // AirPlay audio decryption resets CBC IV for each packet in this receiver path.
+    // Do not carry IV state across packets unless protocol behavior is re-validated end-to-end.
     memcpy(iv, ctx->iv, sizeof(iv));
 
     int ret = mbedtls_aes_setkey_dec(&aes, ctx->key, 128);
