@@ -299,6 +299,7 @@ int rtsp_send_response(tcp_client_t *client, int status, const char *status_text
         response[len++] = '\n';
     }
 
+    printf("[RTSP] Sending response to %s:%u\n%s", client->ip, client->port, response);
     // Send headers
     if (tcp_send(client, (uint8_t *)response, len) < 0)
         return -1;
@@ -442,7 +443,7 @@ int rtsp_server_start(rtsp_instance_t *instance)
 
                     memcpy(instance->rx_buffers[i] + cur_len, recv_tmp, append_len);
                     instance->rx_lengths[i] = cur_len + append_len;
-
+                    printf("[RTSP] Received data from %s:%u (%zu bytes)\n%s", client->ip, client->port, instance->rx_lengths[i], instance->rx_buffers[i]);
                     while (instance->rx_lengths[i] > 0)
                     {
                         rtsp_request_t parsed;
@@ -458,7 +459,6 @@ int rtsp_server_start(rtsp_instance_t *instance)
                             instance->rx_lengths[i] = 0;
                             break;
                         }
-
                         rtsp_handle_request(instance, client, &parsed);
 
                         if (consumed < instance->rx_lengths[i])
