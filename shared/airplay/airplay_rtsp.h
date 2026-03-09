@@ -17,3 +17,5 @@ int airplay_rtsp_play(rtsp_instance_t *instance, tcp_client_t *client, const rts
 int airplay_rtsp_get_announced_session(sdp_session_t *out_session);
 void airplay_rtsp_clear_announced_session(void);
 int airplay_rtsp_is_recording(void);
+float airplay_rtsp_get_volume_db(void);
+unsigned int airplay_rtsp_get_volume_version(void);

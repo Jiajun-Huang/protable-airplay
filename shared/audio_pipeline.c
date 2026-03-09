@@ -328,8 +328,22 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
            session->codec, session->sample_rate, session->channels,
            session->bits_per_sample, session->frames_per_packet);
 
+    if (session->codec == SDP_CODEC_UNKNOWN)
+    {
+        // Compatibility fallback: some senders omit/alter rtpmap while still sending ALAC payloads.
+        // Prefer continuing with ALAC decode over hard fail to avoid silent sessions.
+        impl->session.codec = SDP_CODEC_ALAC;
+        fprintf(stderr, "[pipeline] Unknown codec in SDP; falling back to ALAC\n");
+    }
+
+    if (impl->session.codec == SDP_CODEC_AAC)
+    {
+        fprintf(stderr, "[pipeline] AAC/AAC-ELD session received, but AAC decode is not implemented yet\n");
+        return -1;
+    }
+
     // Create ALAC decoder if needed
-    if (session->codec == SDP_CODEC_ALAC && impl->alac_decoder.frame_length == 0)
+    if (impl->session.codec == SDP_CODEC_ALAC && impl->alac_decoder.frame_length == 0)
     {
         printf("[pipeline] ALAC SDP: frames_per_packet=%u bit_depth=%u channels=%u rate=%u fmtp_count=%zu\n",
                session->frames_per_packet,

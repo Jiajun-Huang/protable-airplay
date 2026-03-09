@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <windows.h>
 #include <string.h>
+#include <math.h>
 
 // Stability-first profile: larger preroll and buffer reduce intermittent gaps.
 // These values trade latency for smoother playback under packet jitter.
@@ -39,7 +40,18 @@ typedef struct
     uint64_t in_samples_last;
     uint64_t out_samples_last;
     DWORD stats_last_tick;
+    float volume_db;
+    float volume_linear;
 } audio_output_device;
+
+static int16_t clamp_i16(int x)
+{
+    if (x > 32767)
+        return 32767;
+    if (x < -32768)
+        return -32768;
+    return (int16_t)x;
+}
 
 static void ring_pop_samples(audio_output_device *device, int16_t *dst, size_t count)
 {
@@ -142,6 +154,7 @@ static DWORD WINAPI audio_play_thread_proc(LPVOID param)
 
 audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample)
 {
+    uint8_t effective_bits = 16;
     audio_output_device *device = (audio_output_device *)malloc(sizeof(*device));
     if (!device)
         return NULL;
@@ -149,9 +162,11 @@ audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channel
     memset(device, 0, sizeof(*device));
     device->sample_rate = sample_rate;
     device->channels = channels;
-    device->bits_per_sample = bits_per_sample;
+    device->bits_per_sample = effective_bits;
     device->sample_count = 0;
-    device->speaker_ready = (win_audio_init(sample_rate, channels, bits_per_sample) == 0) ? 1 : 0;
+    device->speaker_ready = (win_audio_init(sample_rate, channels, effective_bits) == 0) ? 1 : 0;
+    device->volume_db = -20.0f;
+    device->volume_linear = powf(10.0f, device->volume_db / 20.0f);
 
     InitializeCriticalSection(&device->lock);
 
@@ -171,8 +186,8 @@ audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channel
     }
 
     device->log_file = fopen("raop_audio.pcm", "wb");
-    printf("[audio_output] Output: %uHz, %u-ch, %u-bit, speaker=%s\n",
-           sample_rate, channels, bits_per_sample,
+    printf("[audio_output] Output: %uHz, %u-ch, %u-bit (requested %u), speaker=%s\n",
+           sample_rate, channels, effective_bits, bits_per_sample,
            device->speaker_ready ? "ready" : "failed");
     return (audio_output_device_t *)device;
 }
@@ -187,6 +202,7 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
     {
         const int16_t *src = samples;
         size_t count = sample_count;
+        int apply_gain = (device->volume_linear < 0.9999f || device->volume_linear > 1.0001f);
 
         if (count > device->ring_capacity_samples)
         {
@@ -205,7 +221,22 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
             device->ring_fill_samples -= drop;
         }
 
-        ring_push_samples(device, src, count);
+        if (!apply_gain)
+        {
+            ring_push_samples(device, src, count);
+        }
+        else
+        {
+            size_t i;
+            for (i = 0; i < count; i++)
+            {
+                float scaled = (float)src[i] * device->volume_linear;
+                int iv = (int)(scaled >= 0.0f ? (scaled + 0.5f) : (scaled - 0.5f));
+                device->ring[device->ring_write_pos] = clamp_i16(iv);
+                device->ring_write_pos = (device->ring_write_pos + 1) % device->ring_capacity_samples;
+            }
+            device->ring_fill_samples += count;
+        }
 
         // Cap end-to-end latency by trimming oldest queued audio.
         size_t max_latency_samples = ((size_t)device->sample_rate * device->channels * AUDIO_MAX_LATENCY_MS) / 1000;
@@ -264,6 +295,27 @@ int audio_output_write(audio_output_device_t *dev, const int16_t *samples, size_
     }
 
     return (int)sample_count;
+}
+
+int audio_output_set_volume_db(audio_output_device_t *dev, float volume_db)
+{
+    audio_output_device *device = (audio_output_device *)dev;
+    if (!device)
+        return -1;
+
+    if (volume_db > 0.0f)
+        volume_db = 0.0f;
+    if (volume_db < -144.0f)
+        volume_db = -144.0f;
+
+    device->volume_db = volume_db;
+    if (volume_db <= -120.0f)
+        device->volume_linear = 0.0f;
+    else
+        device->volume_linear = powf(10.0f, volume_db / 20.0f);
+
+    printf("[audio_output] Volume %.3f dB (x%.4f)\n", device->volume_db, device->volume_linear);
+    return 0;
 }
 
 void audio_output_close(audio_output_device_t *dev)

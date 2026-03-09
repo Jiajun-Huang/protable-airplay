@@ -30,6 +30,11 @@ audio_output_device_t *audio_output_create(uint32_t sample_rate, uint8_t channel
 int audio_output_write(audio_output_device_t *device, const int16_t *samples, size_t sample_count);
 
 /**
+ * @brief Set output volume in dB (AirPlay style, typically -30.0..0.0, mute near -144)
+ */
+int audio_output_set_volume_db(audio_output_device_t *device, float volume_db);
+
+/**
  * @brief Close and release audio device
  * @param device audio device
  */

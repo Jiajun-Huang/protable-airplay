@@ -363,6 +363,11 @@ int rtsp_send_response(tcp_client_t *client, int status, const char *status_text
         response[len++] = '\n';
     }
 
+    if (len >= 0 && (size_t)len < sizeof(response))
+        response[len] = '\0';
+    else
+        response[sizeof(response) - 1] = '\0';
+
     printf("[RTSP] Sending response to %s:%u\n%s", client->ip, client->port, response);
     // Send headers
     if (tcp_send(client, (uint8_t *)response, len) < 0)

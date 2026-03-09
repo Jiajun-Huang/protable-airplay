@@ -9,6 +9,65 @@
 static sdp_session_t g_announced_session;
 static volatile int g_has_announced_session = 0;
 static volatile int g_airplay_rtsp_recording = 0;
+static volatile float g_airplay_volume_db = -20.0f;
+static volatile unsigned int g_airplay_volume_version = 0;
+
+static int request_body_contains_key(const rtsp_request_t *request, const char *key)
+{
+    char body[256];
+    size_t n;
+
+    if (!request || !request->body || request->body_len == 0 || !key)
+        return 0;
+
+    n = request->body_len;
+    if (n >= sizeof(body))
+        n = sizeof(body) - 1;
+
+    memcpy(body, request->body, n);
+    body[n] = '\0';
+
+    return strstr(body, key) != NULL;
+}
+
+static int parse_body_volume_db(const rtsp_request_t *request, float *out_db)
+{
+    char body[256];
+    char *p;
+    char *endptr;
+    float v;
+    size_t n;
+
+    if (!request || !request->body || request->body_len == 0 || !out_db)
+        return -1;
+
+    n = request->body_len;
+    if (n >= sizeof(body))
+        n = sizeof(body) - 1;
+
+    memcpy(body, request->body, n);
+    body[n] = '\0';
+
+    p = strstr(body, "volume:");
+    if (!p)
+        return -1;
+
+    p += 7;
+    while (*p == ' ' || *p == '\t')
+        p++;
+
+    v = strtof(p, &endptr);
+    if (endptr == p)
+        return -1;
+
+    if (v > 0.0f)
+        v = 0.0f;
+    if (v < -144.0f)
+        v = -144.0f;
+
+    *out_db = v;
+    return 0;
+}
 
 static int parse_transport_port(const char *transport, const char *key, uint16_t *out_port)
 {
@@ -178,12 +237,12 @@ int airplay_rtsp_get_parameter(rtsp_instance_t *instance, tcp_client_t *client, 
     const uint8_t *body = NULL;
     size_t body_len = 0;
     const char *ct = "Content-Type: text/parameters\r\n";
-    static const char volume_body[] = "volume: -20.000000\r\n";
+    char volume_body[64];
     (void)instance;
 
-    if (request->body && request->body_len >= 6 &&
-        memcmp(request->body, "volume", 6) == 0)
+    if (request_body_contains_key(request, "volume"))
     {
+        snprintf(volume_body, sizeof(volume_body), "volume: %.6f\r\n", g_airplay_volume_db);
         body = (const uint8_t *)volume_body;
         body_len = strlen(volume_body);
     }
@@ -194,6 +253,23 @@ int airplay_rtsp_get_parameter(rtsp_instance_t *instance, tcp_client_t *client, 
 int airplay_rtsp_set_parameter(rtsp_instance_t *instance, tcp_client_t *client, const rtsp_request_t *request)
 {
     (void)instance;
+
+    if (request && request->body && request->body_len > 0)
+    {
+        const char *content_type = get_header_value(request, "Content-Type");
+        float volume_db;
+
+        // Only treat text/parameters payload as volume/control data.
+        // Metadata/artwork SET_PARAMETER bodies must not alter runtime volume.
+        if (content_type && strstr(content_type, "text/parameters") &&
+            parse_body_volume_db(request, &volume_db) == 0)
+        {
+            g_airplay_volume_db = volume_db;
+            g_airplay_volume_version++;
+            LOG_RTSP_INFO("SET_PARAMETER volume=%.3f dB\n", volume_db);
+        }
+    }
+
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
@@ -271,4 +347,14 @@ void airplay_rtsp_clear_announced_session(void)
 int airplay_rtsp_is_recording(void)
 {
     return g_airplay_rtsp_recording;
+}
+
+float airplay_rtsp_get_volume_db(void)
+{
+    return g_airplay_volume_db;
+}
+
+unsigned int airplay_rtsp_get_volume_version(void)
+{
+    return g_airplay_volume_version;
 }
