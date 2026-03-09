@@ -56,6 +56,15 @@ typedef struct
     uint8_t *body;             // pointer into receive buffer
     size_t body_len;           // length of body in bytes
 } rtsp_request_t;
+
+typedef struct
+{
+    uint32_t cseq;                        // CSeq to match request
+    char session_id[RTSP_SESSION_ID_LEN]; // Session ID if applicable
+    char *headers;                        // Additional headers as raw string (for simplicity)
+    uint8_t *body;                        // Response body (if any)
+    size_t body_len;                      // Length of response body
+} rtsp_response_t;
 struct rtsp_session
 {
     tcp_client_t *client;
@@ -79,5 +88,20 @@ struct rtsp_instance
 int rtsp_server_create(rtsp_instance_t *instance, uint16_t port);
 
 int rtsp_server_start(rtsp_instance_t *instance);
+
+/**
+ * @brief Send RTSP response to client
+ * @param client Client to send to
+ * @param status HTTP status code (e.g., 200)
+ * @param status_text Status text (e.g., "OK")
+ * @param cseq CSeq value from request
+ * @param extra_headers Additional headers as null-terminated string (can be NULL)
+ * @param body Response body (can be NULL)
+ * @param body_len Length of body in bytes
+ * @return 0 on success, -1 on error
+ */
+int rtsp_send_response(tcp_client_t *client, int status, const char *status_text,
+                       uint32_t cseq, const char *extra_headers,
+                       const uint8_t *body, size_t body_len);
 
 #endif // RTSP_SERVER_H

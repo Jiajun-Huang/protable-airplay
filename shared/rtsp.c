@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "airplay/airplay_rtsp.h"
 
 static int ascii_ieq(const char *a, const char *b)
 {
@@ -179,7 +180,7 @@ static int parse_rtsp_request(uint8_t *buffer, size_t buffer_len, rtsp_request_t
 
             trim_and_copy(header_name, sizeof(header_name), line);
             trim_and_copy(header_value, sizeof(header_value), colon);
-
+            printf("[RTSP] Parsed header: '%s: %s'\n", header_name, header_value);
             if (out_req->header_count < (sizeof(out_req->headers) / sizeof(out_req->headers[0])))
             {
                 rtsp_header_t *h = &out_req->headers[out_req->header_count++];
@@ -257,6 +258,61 @@ static const char *rtsp_get_header_value(const rtsp_request_t *request, const ch
     return NULL;
 }
 
+int rtsp_send_response(tcp_client_t *client, int status, const char *status_text,
+                       uint32_t cseq, const char *extra_headers,
+                       const uint8_t *body, size_t body_len)
+{
+    char response[4096];
+    int len;
+
+    if (!client || !status_text)
+        return -1;
+
+    // Build response headers
+    len = snprintf(response, sizeof(response),
+                   "RTSP/1.0 %d %s\r\n"
+                   "CSeq: %u\r\n"
+                   "Server: AirTunes/366.0\r\n",
+                   status, status_text, cseq);
+
+    // Add extra headers if provided
+    if (extra_headers && extra_headers[0] != '\0')
+    {
+        int extra_len = snprintf(response + len, sizeof(response) - len, "%s", extra_headers);
+        if (extra_len > 0 && (size_t)(len + extra_len) < sizeof(response))
+            len += extra_len;
+    }
+
+    // Add Content-Length if there's a body
+    if (body && body_len > 0)
+    {
+        int content_len = snprintf(response + len, sizeof(response) - len,
+                                   "Content-Length: %zu\r\n", body_len);
+        if (content_len > 0 && (size_t)(len + content_len) < sizeof(response))
+            len += content_len;
+    }
+
+    // End headers
+    if ((size_t)(len + 2) < sizeof(response))
+    {
+        response[len++] = '\r';
+        response[len++] = '\n';
+    }
+
+    // Send headers
+    if (tcp_send(client, (uint8_t *)response, len) < 0)
+        return -1;
+
+    // Send body if present
+    if (body && body_len > 0)
+    {
+        if (tcp_send(client, body, body_len) < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 static void remove_client_at(rtsp_instance_t *instance, int idx)
 {
     int i;
@@ -302,7 +358,6 @@ int rtsp_server_create(rtsp_instance_t *instance, uint16_t port)
 static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
                                 const rtsp_request_t *request)
 {
-    (void)instance;
 
     printf("[RTSP] Handling request from client %s:%u\n", client->ip, client->port);
     printf("[RTSP] Method=%s URI=%s CSeq=%u BodyLen=%zu\n",
@@ -311,17 +366,32 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
            request->cseq,
            request->body_len);
 
-    {
-        const char *session = rtsp_get_header_value(request, "Session");
-        const char *transport = rtsp_get_header_value(request, "Transport");
-        const char *content_type = rtsp_get_header_value(request, "Content-Type");
+    const char *session = rtsp_get_header_value(request, "Session");
+    const char *transport = rtsp_get_header_value(request, "Transport");
+    const char *content_type = rtsp_get_header_value(request, "Content-Type");
 
-        if (session && session[0] != '\0')
-            printf("[RTSP] Session: %s\n", session);
-        if (transport && transport[0] != '\0')
-            printf("[RTSP] Transport: %s\n", transport);
-        if (content_type && content_type[0] != '\0')
-            printf("[RTSP] Content-Type: %s\n", content_type);
+    if (session && session[0] != '\0')
+        printf("[RTSP] Session: %s\n", session);
+    if (transport && transport[0] != '\0')
+        printf("[RTSP] Transport: %s\n", transport);
+    if (content_type && content_type[0] != '\0')
+        printf("[RTSP] Content-Type: %s\n", content_type);
+
+    // calls
+    switch (request->method)
+    {
+    case RTSP_METHOD_OPTIONS:
+        airplay_rtsp_options(instance, client, request);
+        break;
+    case RTSP_METHOD_DESCRIBE:
+        airplay_rtsp_describe(instance, client, request);
+        break;
+    case RTSP_METHOD_ANNOUNCE:
+        airplay_rtsp_announce(instance, client, request);
+        break;
+    default:
+        printf("[RTSP] No handler implemented for method %s\n", method_to_str(request->method));
+        break;
     }
 }
 
