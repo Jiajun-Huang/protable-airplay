@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #define alac_create shairport_alac_create
 #define alac_decode_frame shairport_alac_decode_frame
@@ -27,8 +28,17 @@ int alac_decoder_init(alac_decoder_t *decoder,
     memset(decoder, 0, sizeof(*decoder));
 
     decoder->frame_length = frames_per_packet ? frames_per_packet : 352;
+    if (decoder->frame_length > 8192)
+        decoder->frame_length = 352;
+
     decoder->bit_depth = bit_depth ? bit_depth : 16;
+    if (decoder->bit_depth != 16 && decoder->bit_depth != 24)
+        decoder->bit_depth = 16;
+
     decoder->channels = channels ? channels : 2;
+    if (decoder->channels == 0 || decoder->channels > 2)
+        decoder->channels = 2;
+
     decoder->sample_rate = sample_rate ? sample_rate : 44100;
 
     if (fmtp && fmtp_count > 0)
@@ -36,22 +46,30 @@ int alac_decoder_init(alac_decoder_t *decoder,
         decoder->fmtp_count = (fmtp_count > 12) ? 12 : fmtp_count;
         for (size_t i = 0; i < decoder->fmtp_count; i++)
             decoder->fmtp[i] = fmtp[i];
+
+        printf("[alac] fmtp_count=%zu values:", decoder->fmtp_count);
+        for (size_t i = 0; i < decoder->fmtp_count; i++)
+            printf(" %u", decoder->fmtp[i]);
+        printf("\n");
     }
 
     alac_file *alac = shairport_alac_create(decoder->bit_depth, decoder->channels);
     if (!alac)
         return -1;
 
+    // AirPlay ALAC fmtp layout:
+    // [0]=frameLength [1]=compatibleVersion [2]=bitDepth [3]=pb [4]=mb [5]=kb
+    // [6]=channels [7]=maxRun [8]=maxFrameBytes [9]=avgBitRate [10]=sampleRate
     alac->setinfo_max_samples_per_frame = decoder->frame_length;
-    alac->setinfo_7a = (decoder->fmtp_count > 2) ? (uint8_t)decoder->fmtp[2] : 0;
+    alac->setinfo_7a = (decoder->fmtp_count > 1) ? (uint8_t)decoder->fmtp[1] : 0;
     alac->setinfo_sample_size = decoder->bit_depth;
-    alac->setinfo_rice_historymult = (decoder->fmtp_count > 4) ? (uint8_t)decoder->fmtp[4] : 40;
-    alac->setinfo_rice_initialhistory = (decoder->fmtp_count > 5) ? (uint8_t)decoder->fmtp[5] : 10;
-    alac->setinfo_rice_kmodifier = (decoder->fmtp_count > 6) ? (uint8_t)decoder->fmtp[6] : 14;
-    alac->setinfo_7f = (decoder->fmtp_count > 7) ? (uint8_t)decoder->fmtp[7] : 2;
-    alac->setinfo_80 = (decoder->fmtp_count > 8) ? (uint16_t)decoder->fmtp[8] : 255;
-    alac->setinfo_82 = (decoder->fmtp_count > 9) ? decoder->fmtp[9] : 0;
-    alac->setinfo_86 = (decoder->fmtp_count > 10) ? decoder->fmtp[10] : 0;
+    alac->setinfo_rice_historymult = (decoder->fmtp_count > 3) ? (uint8_t)decoder->fmtp[3] : 40;
+    alac->setinfo_rice_initialhistory = (decoder->fmtp_count > 4) ? (uint8_t)decoder->fmtp[4] : 10;
+    alac->setinfo_rice_kmodifier = (decoder->fmtp_count > 5) ? (uint8_t)decoder->fmtp[5] : 14;
+    alac->setinfo_7f = (decoder->fmtp_count > 6) ? (uint8_t)decoder->fmtp[6] : decoder->channels;
+    alac->setinfo_80 = (decoder->fmtp_count > 7) ? (uint16_t)decoder->fmtp[7] : 255;
+    alac->setinfo_82 = (decoder->fmtp_count > 8) ? decoder->fmtp[8] : 0;
+    alac->setinfo_86 = (decoder->fmtp_count > 9) ? decoder->fmtp[9] : 0;
     alac->setinfo_8a_rate = decoder->sample_rate;
     shairport_alac_allocate_buffers(alac);
 
@@ -59,6 +77,18 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     printf("[alac] Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
            decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
+    printf("[alac] setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
+           alac->setinfo_max_samples_per_frame,
+           alac->setinfo_7a,
+           alac->setinfo_sample_size,
+           alac->setinfo_rice_historymult,
+           alac->setinfo_rice_initialhistory,
+           alac->setinfo_rice_kmodifier,
+           alac->setinfo_7f,
+           alac->setinfo_80,
+           alac->setinfo_82,
+           alac->setinfo_86,
+           alac->setinfo_8a_rate);
 
     return 0;
 }
@@ -71,7 +101,14 @@ int alac_decode_frame(alac_decoder_t *decoder,
         return -1;
 
     alac_file *alac = (alac_file *)decoder->impl;
-    int output_bytes = 0;
+    if (max_output_samples == 0)
+        return -1;
+
+    size_t max_output_bytes = max_output_samples * sizeof(int16_t);
+    if (max_output_bytes > (size_t)INT_MAX)
+        max_output_bytes = (size_t)INT_MAX;
+
+    int output_bytes = (int)max_output_bytes;
 
     shairport_alac_decode_frame(alac, (unsigned char *)input, output, &output_bytes);
 

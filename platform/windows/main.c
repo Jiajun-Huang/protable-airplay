@@ -3,6 +3,8 @@
 #include "network_util.h"
 #include "rtsp.h"
 #include "rtp.h"
+#include "audio_pipeline.h"
+#include "audio_output.h"
 #include "airplay/airplay_discovery.h"
 #include <windows.h>
 #include <winsock2.h>
@@ -15,8 +17,8 @@
 static volatile LONG g_stop_discovery = 0;
 static volatile LONG g_stop_rtp = 0;
 
-static rtp_receiver_t g_rtp_receiver;
-static int g_rtp_created = 0;
+static audio_pipeline_t g_audio_pipeline;
+static audio_output_device_t *g_audio_output = NULL;
 
 static int discovery_should_stop(void)
 {
@@ -30,25 +32,21 @@ static DWORD WINAPI discovery_thread_proc(LPVOID param)
     return 0;
 }
 
-static void rtp_audio_cb(const rtp_packet_t *packet, void *user_data)
+static void audio_pipeline_on_audio_data(const int16_t *samples, size_t sample_count, void *user_data)
 {
     (void)user_data;
-    (void)packet;
-    /* Raw RTP audio payload bytes are logged in rtp_receiver_poll. */
-}
 
-static void rtp_control_cb(const uint8_t *data, size_t len, void *user_data)
-{
-    (void)user_data;
-    (void)data;
-    printf("[rtp] control packet: %zu bytes\n", len);
-}
+    if (!g_audio_output || !samples || sample_count == 0)
+        return;
 
-static void rtp_timing_cb(const uint8_t *data, size_t len, void *user_data)
-{
-    (void)user_data;
-    (void)data;
-    printf("[rtp] timing packet: %zu bytes\n", len);
+    // Write decoded PCM samples to active output backend.
+    int written = audio_output_write(g_audio_output, samples, sample_count);
+    if (written < 0)
+    {
+        static int logged_once = 0;
+        if (!logged_once++)
+            printf("[audio] Error writing audio samples\n");
+    }
 }
 
 static DWORD WINAPI rtp_thread_proc(LPVOID param)
@@ -63,9 +61,62 @@ static DWORD WINAPI rtp_thread_proc(LPVOID param)
         {
             printf("[rtp] stream state: %s\n", rec ? "RECORDING" : "IDLE");
             last_record = rec;
+
+            if (rec)
+            {
+                sdp_session_t session;
+                if (rtsp_get_announced_session(&session) != 0)
+                {
+                    printf("[audio] No ANNOUNCE SDP yet; waiting before playback\n");
+                    Sleep(10);
+                    continue;
+                }
+
+                if (audio_pipeline_configure(&g_audio_pipeline, &session) != 0)
+                {
+                    printf("[audio] Failed to configure pipeline from SDP\n");
+                    Sleep(10);
+                    continue;
+                }
+
+                if (!g_audio_output)
+                {
+                    g_audio_output = audio_output_create(session.sample_rate,
+                                                         (uint8_t)session.channels,
+                                                         (uint8_t)session.bits_per_sample);
+                    if (g_audio_output)
+                    {
+                        printf("[audio] Output created from SDP (%uHz, %u-ch, %u-bit)\n",
+                               session.sample_rate, session.channels, session.bits_per_sample);
+                        if (audio_pipeline_start(&g_audio_pipeline) != 0)
+                            printf("[audio] Failed to start audio pipeline\n");
+                    }
+                    else
+                    {
+                        printf("[audio] Failed to create output device\n");
+                    }
+                }
+            }
+            else
+            {
+                // Stop audio playback and close output.
+                if (g_audio_output)
+                {
+                    audio_pipeline_stop(&g_audio_pipeline);
+                    audio_output_close(g_audio_output);
+                    g_audio_output = NULL;
+                    rtsp_clear_announced_session();
+                    printf("[audio] Output closed\n");
+                }
+            }
         }
 
-        rtp_receiver_poll(&g_rtp_receiver, rec ? 50 : 10);
+        // Poll audio pipeline to process RTP packets
+        if (rec && audio_pipeline_get_state(&g_audio_pipeline) == AUDIO_PIPELINE_PLAYING)
+        {
+            audio_pipeline_poll(&g_audio_pipeline, 20);
+        }
+
         Sleep(5);
     }
 
@@ -144,33 +195,31 @@ int main(void)
     fflush(stdout);
 
     {
-        rtp_receiver_config_t rtp_cfg;
-        memset(&rtp_cfg, 0, sizeof(rtp_cfg));
-        rtp_cfg.audio_port = 6000;
-        rtp_cfg.control_port = 6001;
-        rtp_cfg.timing_port = 6002;
-        rtp_cfg.audio_cb = rtp_audio_cb;
-        rtp_cfg.control_cb = rtp_control_cb;
-        rtp_cfg.timing_cb = rtp_timing_cb;
-        rtp_cfg.user_data = NULL;
+        // Create audio pipeline (includes its own RTP receiver).
+        audio_pipeline_config_t audio_cfg;
+        memset(&audio_cfg, 0, sizeof(audio_cfg));
+        audio_cfg.audio_port = 6000;
+        audio_cfg.control_port = 6001;
+        audio_cfg.timing_port = 6002;
+        audio_cfg.on_audio_data = audio_pipeline_on_audio_data;
+        audio_cfg.on_state_change = NULL;
+        audio_cfg.user_data = NULL;
 
-        if (rtp_receiver_create(&g_rtp_receiver, &rtp_cfg) != 0)
+        if (audio_pipeline_create(&g_audio_pipeline, &audio_cfg) != 0)
         {
-            printf("[main] Failed to create RTP receiver\n");
+            printf("[main] Failed to create audio pipeline\n");
             InterlockedExchange((LONG *)&g_stop_discovery, 1);
             WaitForSingleObject(discovery_thread, INFINITE);
             CloseHandle(discovery_thread);
             airplay_discovery_deinit();
             return -1;
         }
-        g_rtp_created = 1;
 
         rtp_thread = CreateThread(NULL, 0, rtp_thread_proc, NULL, 0, NULL);
         if (!rtp_thread)
         {
             printf("[main] Failed to create RTP thread\n");
-            rtp_receiver_close(&g_rtp_receiver);
-            g_rtp_created = 0;
+            audio_pipeline_close(&g_audio_pipeline);
             InterlockedExchange((LONG *)&g_stop_discovery, 1);
             WaitForSingleObject(discovery_thread, INFINITE);
             CloseHandle(discovery_thread);
@@ -192,14 +241,18 @@ int main(void)
 
     result = rtsp_server_start(&rtsp_server);
 
+    // Cleanup on RTSP server exit
+    if (g_audio_output)
+    {
+        audio_output_close(g_audio_output);
+        g_audio_output = NULL;
+    }
+
+    audio_pipeline_close(&g_audio_pipeline);
+
     InterlockedExchange((LONG *)&g_stop_rtp, 1);
     WaitForSingleObject(rtp_thread, INFINITE);
     CloseHandle(rtp_thread);
-    if (g_rtp_created)
-    {
-        rtp_receiver_close(&g_rtp_receiver);
-        g_rtp_created = 0;
-    }
 
     InterlockedExchange((LONG *)&g_stop_discovery, 1);
     WaitForSingleObject(discovery_thread, INFINITE);

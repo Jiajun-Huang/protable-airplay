@@ -20,6 +20,8 @@ static WAVEHDR waveHeaders[4];
 static uint8_t audioBuffers[4][16384];
 static int currentBuffer = 0;
 static float volume_linear = 0.8f;
+static uint16_t g_channels = 2;
+static uint16_t g_bits_per_sample = 16;
 
 int win_audio_init(uint32_t sample_rate, uint16_t channels, uint16_t bits_per_sample)
 {
@@ -67,6 +69,8 @@ int win_audio_init(uint32_t sample_rate, uint16_t channels, uint16_t bits_per_sa
     }
 
     currentBuffer = 0;
+    g_channels = channels;
+    g_bits_per_sample = bits_per_sample;
     printf("[audio] Initialized: %u Hz, %u channels, %u bits\n", sample_rate, channels, bits_per_sample);
     return 0;
 }
@@ -76,9 +80,9 @@ int win_audio_play_pcm(const int16_t *samples, size_t frames)
     if (!hWaveOut || !samples || frames == 0)
         return -1;
 
-    // Calculate buffer size needed (frames * channels * bytes_per_sample)
-    // Assuming stereo 16-bit: frames * 2 * 2 = frames * 4
-    size_t bytes_needed = frames * 4;
+    // Calculate buffer size for the current audio format.
+    size_t bytes_per_frame = ((size_t)g_channels * (size_t)g_bits_per_sample) / 8;
+    size_t bytes_needed = frames * bytes_per_frame;
     if (bytes_needed > sizeof(audioBuffers[0]))
     {
         fprintf(stderr, "[audio] Frame size too large: %zu bytes\n", bytes_needed);
@@ -102,7 +106,7 @@ int win_audio_play_pcm(const int16_t *samples, size_t frames)
 
     // Copy PCM data with volume adjustment
     int16_t *pBuffer = (int16_t *)pHeader->lpData;
-    for (size_t i = 0; i < frames * 2; i++)
+    for (size_t i = 0; i < frames * g_channels; i++)
     {
         // Apply volume as linear gain
         float sample_f = (float)samples[i] * volume_linear;

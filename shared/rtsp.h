@@ -5,10 +5,11 @@
 #include <stddef.h>
 #include <time.h>
 #include "tcp_if.h"
+#include "sdp.h"
 
 #define RTSP_MAX_SESSIONS 32
 #define RTSP_SESSION_ID_LEN 16
-#define RTSP_RX_BUFFER_SIZE 8192
+#define RTSP_RX_BUFFER_SIZE (256 * 1024)
 
 typedef struct rtsp_session rtsp_session_t;
 typedef struct rtsp_instance rtsp_instance_t;
@@ -106,5 +107,11 @@ int rtsp_send_response(tcp_client_t *client, int status, const char *status_text
 
 /* Basic stream state exposed for other modules (e.g. RTP thread). */
 int rtsp_is_recording(void);
+
+/* Retrieve SDP from latest ANNOUNCE (0 on success). */
+int rtsp_get_announced_session(sdp_session_t *out_session);
+
+/* Clear cached ANNOUNCE SDP state. */
+void rtsp_clear_announced_session(void);
 
 #endif // RTSP_SERVER_H

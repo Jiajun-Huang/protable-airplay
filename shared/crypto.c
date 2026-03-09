@@ -5,6 +5,7 @@
 
 #include <mbedtls/pk.h>
 #include <mbedtls/rsa.h>
+#include <mbedtls/md.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/aes.h>
@@ -65,6 +66,10 @@ int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key, size_t encrypted_le
     if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA))
         goto cleanup;
 
+    // AirPlay rsaaeskey uses RSA-OAEP with SHA1.
+    mbedtls_rsa_context *rsa = mbedtls_pk_rsa(pk);
+    mbedtls_rsa_set_padding(rsa, MBEDTLS_RSA_PKCS_V21, MBEDTLS_MD_SHA1);
+
     if (mbedtls_pk_decrypt(&pk,
                            encrypted_key, encrypted_len,
                            outbuf, &out_len, sizeof(outbuf),
@@ -106,16 +111,12 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t 
     mbedtls_aes_context aes;
     unsigned char iv[16];
     mbedtls_aes_init(&aes);
-    memcpy(iv, ctx->state, sizeof(iv));
+    // AirPlay audio decryption resets CBC IV for each packet.
+    memcpy(iv, ctx->iv, sizeof(iv));
 
     int ret = mbedtls_aes_setkey_dec(&aes, ctx->key, 128);
     if (ret == 0)
         ret = mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, len, iv, input, output);
-
-    if (ret == 0)
-    {
-        memcpy(ctx->state, input + (len - 16), 16);
-    }
 
     mbedtls_aes_free(&aes);
     return ret == 0 ? 0 : -1;

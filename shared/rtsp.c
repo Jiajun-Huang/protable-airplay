@@ -6,6 +6,9 @@
 #include <string.h>
 #include "airplay/airplay_rtsp.h"
 
+static sdp_session_t g_announced_session;
+static volatile int g_has_announced_session = 0;
+
 static volatile int g_rtsp_recording = 0;
 
 static int parse_transport_port(const char *transport, const char *key, uint16_t *out_port)
@@ -125,6 +128,31 @@ static int find_headers_end(const uint8_t *data, size_t len, size_t *headers_end
     }
 
     return 0;
+}
+
+static void rtsp_log_request_preview(const uint8_t *data, size_t len)
+{
+    if (!data || len == 0)
+        return;
+
+    size_t preview_len = len < 256 ? len : 256;
+    size_t line_len = 0;
+    while (line_len + 1 < preview_len)
+    {
+        if (data[line_len] == '\r' && data[line_len + 1] == '\n')
+            break;
+        line_len++;
+    }
+
+    if (line_len > 0)
+    {
+        char line[257];
+        if (line_len >= sizeof(line))
+            line_len = sizeof(line) - 1;
+        memcpy(line, data, line_len);
+        line[line_len] = '\0';
+        printf("[RTSP] Request line preview: %s\n", line);
+    }
 }
 
 /* Returns: 1=parsed one full request, 0=need more bytes, -1=malformed */
@@ -416,6 +444,21 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
         handler_rc = airplay_rtsp_describe(instance, client, request);
         break;
     case RTSP_METHOD_ANNOUNCE:
+        if (request->body && request->body_len > 0)
+        {
+            sdp_session_t parsed;
+            if (sdp_parse(request->body, request->body_len, &parsed) == 0)
+            {
+                g_announced_session = parsed;
+                g_has_announced_session = 1;
+                printf("[RTSP] ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
+                       parsed.codec, parsed.sample_rate, parsed.channels, parsed.bits_per_sample);
+            }
+            else
+            {
+                printf("[RTSP] ANNOUNCE SDP parse failed\n");
+            }
+        }
         handler_rc = airplay_rtsp_announce(instance, client, request);
         break;
     case RTSP_METHOD_POST:
@@ -439,7 +482,12 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
             parse_transport_port(transport_hdr, "control_port", &client_control);
         }
 
-        printf("[RTSP] SETUP client ports: timing=%u control=%u\n", client_timing, client_control);
+        printf("[RTSP] SETUP cseq=%u client=%s:%u timing=%u control=%u\n",
+               request->cseq,
+               client->ip,
+               client->port,
+               client_timing,
+               client_control);
 
         snprintf(extra_headers, sizeof(extra_headers),
                  "Session: 00000001\r\n"
@@ -471,14 +519,23 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
     case RTSP_METHOD_TEARDOWN:
     case RTSP_METHOD_PAUSE:
         if (request->method == RTSP_METHOD_TEARDOWN)
+        {
             g_rtsp_recording = 0;
+            g_has_announced_session = 0;
+        }
         handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
         break;
     case RTSP_METHOD_RECORD:
     {
         const char *record_headers = "Session: 00000001\r\nAudio-Latency: 2205\r\n";
+        const char *session_hdr = rtsp_get_header_value(request, "Session");
+
         g_rtsp_recording = 1;
-        printf("[RTSP] RECORD received: streaming started\n");
+        printf("[RTSP] RECORD cseq=%u client=%s:%u session=%s state=recording\n",
+               request->cseq,
+               client->ip,
+               client->port,
+               (session_hdr && session_hdr[0] != '\0') ? session_hdr : "none");
         handler_rc = rtsp_send_response(client, 200, "OK", request->cseq, record_headers, NULL, 0);
         break;
     }
@@ -514,6 +571,21 @@ static void rtsp_handle_request(rtsp_instance_t *instance, tcp_client_t *client,
 int rtsp_is_recording(void)
 {
     return g_rtsp_recording;
+}
+
+int rtsp_get_announced_session(sdp_session_t *out_session)
+{
+    if (!out_session || !g_has_announced_session)
+        return -1;
+
+    *out_session = g_announced_session;
+    return 0;
+}
+
+void rtsp_clear_announced_session(void)
+{
+    memset(&g_announced_session, 0, sizeof(g_announced_session));
+    g_has_announced_session = 0;
 }
 
 int rtsp_server_start(rtsp_instance_t *instance)
@@ -563,7 +635,9 @@ int rtsp_server_start(rtsp_instance_t *instance)
 
                     memcpy(instance->rx_buffers[i] + cur_len, recv_tmp, append_len);
                     instance->rx_lengths[i] = cur_len + append_len;
-                    printf("[RTSP] Received data from %s:%u (%zu bytes)\n%s", client->ip, client->port, instance->rx_lengths[i], instance->rx_buffers[i]);
+                    printf("[RTSP] Received data from %s:%u (%zu bytes buffered)\n",
+                           client->ip, client->port, instance->rx_lengths[i]);
+                    rtsp_log_request_preview(instance->rx_buffers[i], instance->rx_lengths[i]);
                     while (instance->rx_lengths[i] > 0)
                     {
                         rtsp_request_t parsed;
