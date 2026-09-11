@@ -1,6 +1,7 @@
 #include "server.h"
 #include "net.h"
 #include "os.h"
+#include "log.h"
 
 #include <winsock2.h>
 #include <windows.h>
@@ -121,12 +122,12 @@ int main(int argc, char **argv)
 
     if (argc != 1 && argc != 3 && argc != 4)
     {
-        fprintf(stderr, "Usage: %s [IPv4 MAC_HEX [NAME]]\n", argv[0]);
+        LOG_ERROR("main", "Usage: %s [IPv4 MAC_HEX [NAME]]\n", argv[0]);
         return 1;
     }
     if (net_init() != 0)
     {
-        fprintf(stderr, "Cannot initialize networking.\n");
+        LOG_ERROR("main", "Cannot initialize networking.\n");
         return 1;
     }
     strcpy(config.device_name, AIRPLAY_DEVICE_NAME);
@@ -134,7 +135,7 @@ int main(int argc, char **argv)
     {
         if (detect_identity(&config) != 0)
         {
-            fprintf(stderr, "Cannot find an active IPv4 adapter; specify IPv4 and MAC_HEX.\n");
+            LOG_ERROR("main", "Cannot find an active IPv4 adapter; specify IPv4 and MAC_HEX.\n");
             goto network_done;
         }
     }
@@ -144,7 +145,7 @@ int main(int argc, char **argv)
             strlen(argv[2]) != 12 ||
             (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
         {
-            fprintf(stderr, "Invalid IPv4, MAC_HEX, or device name length.\n");
+            LOG_ERROR("main", "Invalid IPv4, MAC_HEX, or device name length.\n");
             goto network_done;
         }
         strcpy(config.local_ip, argv[1]);
@@ -154,22 +155,22 @@ int main(int argc, char **argv)
     }
     if (airplay_server_init(&server, &config) != 0)
     {
-        fprintf(stderr, "Cannot initialize AirPlay server.\n");
+        LOG_ERROR("main", "Cannot initialize AirPlay server.\n");
         goto network_done;
     }
     if (!SetConsoleCtrlHandler(console_handler, TRUE))
     {
-        fprintf(stderr, "Cannot register console stop handler.\n");
+        LOG_ERROR("main", "Cannot register console stop handler.\n");
         goto server_done;
     }
-    printf("AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
+    LOG_INFO("main", "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
            config.device_name, config.local_ip, config.local_mac_hex);
     for (started = 0; started < 3; ++started)
     {
         threads[started] = CreateThread(NULL, 0, entries[started], &server, 0, NULL);
         if (!threads[started])
         {
-            fprintf(stderr, "Cannot start service thread.\n");
+            LOG_ERROR("main", "Cannot start service thread.\n");
             break;
         }
     }

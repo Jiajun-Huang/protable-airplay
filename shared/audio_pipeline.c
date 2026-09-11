@@ -1,9 +1,9 @@
 #include "audio_pipeline.h"
 #include "alac_decoder.h"
 #include "crypto.h"
+#include "log.h"
 #include "ntp_sync.h"
 #include "os.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -30,7 +30,7 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
 
         if (payload_len > sizeof(decrypted_buffer))
         {
-            fprintf(stderr, "[pipeline] Encrypted payload too large: %zu > %zu\n",
+            LOG_ERROR("pipeline", "Encrypted payload too large: %zu > %zu\n",
                     payload_len, sizeof(decrypted_buffer));
             return -1;
         }
@@ -48,7 +48,7 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
         }
         else
         {
-            fprintf(stderr, "[pipeline] AES decryption failed\n");
+            LOG_ERROR("pipeline", "AES decryption failed\n");
             return -1;
         }
     }
@@ -127,7 +127,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
     {
         static int logged_null = 0;
         if (!logged_null++)
-            fprintf(stderr, "[pipeline] ERROR: RTP audio callback received NULL pipeline!\n");
+            LOG_ERROR("pipeline", "RTP audio callback received NULL pipeline!\n");
         return;
     }
 
@@ -135,7 +135,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
     {
         static int logged_state = 0;
         if (!logged_state++)
-            fprintf(stderr, "[pipeline] WARNING: RTP audio callback but pipeline not PLAYING (state=%d)\n", pipeline->state);
+            LOG_WARN("pipeline", "RTP audio callback but pipeline not PLAYING (state=%d)\n", pipeline->state);
         return;
     }
     if (packet->header.payload_type != pipeline->session.payload_type)
@@ -152,7 +152,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
             int16_t delta = (int16_t)(packet->header.sequence - expected);
             if (delta > 0)
                 pipeline->packets_lost += (uint32_t)delta;
-            // printf("[pipeline] Lost %u packets (seq jump %u -> %u)\n",
+            // LOG_DEBUG("pipeline", "Lost %u packets (seq jump %u -> %u)\n",
             //        lost, pipeline->last_sequence, packet->header.sequence);
         }
     }
@@ -171,7 +171,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
         {
             ++pipeline->decode_errors;
             if (pipeline->decode_errors <= 3 || pipeline->decode_errors % 100 == 0)
-                fprintf(stderr, "[audio] ALAC rejected: seq=%u bytes=%zu encrypted=%d errors=%u\n",
+                LOG_ERROR("audio", "ALAC rejected: seq=%u bytes=%zu encrypted=%d errors=%u\n",
                         packet->header.sequence, packet->payload_len,
                         pipeline->session.has_encryption, pipeline->decode_errors);
             return;
@@ -207,7 +207,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
             ++pipeline->nonzero_packets;
         if (pipeline->decoded_packets++ == 0 || (peak && pipeline->nonzero_packets == 1))
         {
-            printf("[audio] First decoded packet: seq=%u pt=%u bytes=%zu samples=%zu channels=%u peak=%d encrypted=%d\n",
+            LOG_DEBUG("audio", "First decoded packet: seq=%u pt=%u bytes=%zu samples=%zu channels=%u peak=%d encrypted=%d\n",
                    packet->header.sequence, packet->header.payload_type, packet->payload_len,
                    decoded_count, pipeline->session.channels, peak, pipeline->session.has_encryption);
         }
@@ -219,7 +219,7 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
     // Debug output every 1000 packets
     if (pipeline->packets_received % 1000 == 0)
     {
-        printf("[pipeline] Played %u packets, gaps %u (%.2f%%), nonzero=%u queued=%u late=%u overflow=%u\n",
+        LOG_DEBUG("pipeline", "Played %u packets, gaps %u (%.2f%%), nonzero=%u queued=%u late=%u overflow=%u\n",
                pipeline->packets_received, pipeline->packets_lost,
                (pipeline->packets_lost * 100.0f) / pipeline->packets_received,
                pipeline->nonzero_packets, pipeline->playout.count,
@@ -235,13 +235,13 @@ static void audio_pipeline_on_rtp_audio(const rtp_packet_t *packet, void *user_d
         return;
     int result = playout_push(&pipeline->playout, packet);
     if (result < 0 && ++pipeline->queue_overflows <= 3)
-        fprintf(stderr, "[audio] Playout capacity exceeded: queued=%u bytes=%zu\n",
+                LOG_WARN("audio", "Playout capacity exceeded: queued=%u bytes=%zu\n",
                 pipeline->playout.count, packet->payload_len);
     if (result > 0 && !pipeline->first_arrival_us)
     {
         pipeline->first_arrival_us = os_time_us();
         pipeline->first_timestamp = packet->header.timestamp;
-        printf("[audio] Buffering first RTP packet: seq=%u timestamp=%u bytes=%zu\n",
+        LOG_DEBUG("audio", "Buffering first RTP packet: seq=%u timestamp=%u bytes=%zu\n",
                packet->header.sequence, packet->header.timestamp, packet->payload_len);
     }
 }
@@ -257,7 +257,7 @@ static void audio_pipeline_on_rtp_control(const uint8_t *data, size_t len, void 
     uint32_t rate = pipeline->session.sample_rate ? pipeline->session.sample_rate : AIRPLAY_DEFAULT_SAMPLE_RATE;
     if (ntp_sync_control(&pipeline->ntp_sync, data, len, rate) == 0 &&
         (!had_anchor || old_latency != pipeline->ntp_sync.latency_frames))
-        printf("[sync] RTP anchor=%u sender latency=%u frames (%.1f ms), clock_ready=%d\n",
+        LOG_DEBUG("sync", "RTP anchor=%u sender latency=%u frames (%.1f ms), clock_ready=%d\n",
                pipeline->ntp_sync.rtp_base, pipeline->ntp_sync.latency_frames,
                pipeline->ntp_sync.latency_frames * 1000.0 / rate, pipeline->ntp_sync.synchronized);
 }
@@ -281,7 +281,7 @@ static void audio_pipeline_on_rtp_timing(const uint8_t *data, size_t len, const 
         return;
     int had_clock = pipeline->ntp_sync.synchronized;
     if (ntp_sync_process_packet(&pipeline->ntp_sync, data, len) == 0 && !had_clock)
-        printf("[sync] Sender clock ready: RTT=%lld us offset=%lld us\n",
+        LOG_DEBUG("sync", "Sender clock ready: RTT=%lld us offset=%lld us\n",
                (long long)pipeline->ntp_sync.rtt_us, (long long)pipeline->ntp_sync.clock_offset_us);
 }
 
@@ -305,7 +305,7 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
         pipeline->ntp_sync_initialized = 1;
     else
     {
-        fprintf(stderr, "[pipeline] Warning: Failed to create NTP sync\n");
+        LOG_WARN("pipeline", "Failed to create NTP sync\n");
     }
 
     // Create RTP receiver
@@ -320,7 +320,7 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
 
     if (rtp_receiver_create(&pipeline->rtp, &rtp_config) != 0)
     {
-        fprintf(stderr, "[pipeline] Failed to create RTP receiver\n");
+        LOG_ERROR("pipeline", "Failed to create RTP receiver\n");
         if (pipeline->ntp_sync_initialized)
         {
             ntp_sync_deinit(&pipeline->ntp_sync);
@@ -329,7 +329,7 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
         return -1;
     }
 
-    printf("[pipeline] Created audio pipeline (ports: %u/%u/%u)\n",
+    LOG_INFO("pipeline", "Created audio pipeline (ports: %u/%u/%u)\n",
            config->audio_port, config->control_port, config->timing_port);
 
     return 0;
@@ -364,7 +364,7 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
     impl->configured = 0;
     impl->state = AUDIO_PIPELINE_STOPPED;
 
-    printf("[pipeline] Configured: codec=%d, %uHz, %u-ch, %u-bit, %u frames/pkt\n",
+    LOG_INFO("pipeline", "Configured: codec=%d, %uHz, %u-ch, %u-bit, %u frames/pkt\n",
            session->codec, session->sample_rate, session->channels,
            session->bits_per_sample, session->frames_per_packet);
 
@@ -373,19 +373,19 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
         // Compatibility fallback: some senders omit/alter rtpmap while still sending ALAC payloads.
         // Prefer continuing with ALAC decode over hard fail to avoid silent sessions.
         impl->session.codec = SDP_CODEC_ALAC;
-        fprintf(stderr, "[pipeline] Unknown codec in SDP; falling back to ALAC\n");
+        LOG_WARN("pipeline", "Unknown codec in SDP; falling back to ALAC\n");
     }
 
     if (impl->session.codec == SDP_CODEC_AAC)
     {
-        fprintf(stderr, "[pipeline] AAC/AAC-ELD session received, but AAC decode is not implemented yet\n");
+        LOG_WARN("pipeline", "AAC/AAC-ELD session received, but AAC decode is not implemented yet\n");
         return -1;
     }
 
     // Create ALAC decoder if needed
     if (impl->session.codec == SDP_CODEC_ALAC && impl->alac_decoder.frame_length == 0)
     {
-        printf("[pipeline] ALAC SDP: frames_per_packet=%u bit_depth=%u channels=%u rate=%u fmtp_count=%zu\n",
+                LOG_DEBUG("pipeline", "ALAC SDP: frames_per_packet=%u bit_depth=%u channels=%u rate=%u fmtp_count=%zu\n",
                session->frames_per_packet,
                session->bits_per_sample,
                session->channels,
@@ -398,7 +398,7 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
                               (uint8_t)session->channels,
                               session->sample_rate) != 0)
         {
-            fprintf(stderr, "[pipeline] Warning: Failed to initialize ALAC decoder\n");
+            LOG_ERROR("pipeline", "Failed to initialize ALAC decoder\n");
             return -1;
         }
     }
@@ -421,11 +421,11 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
                                            aes_key) == 0)
             {
                 have_key = 1;
-                printf("[pipeline] AES key decrypted via RSA\n");
+                LOG_INFO("pipeline", "AES key decrypted via RSA\n");
             }
             else
             {
-                fprintf(stderr, "[pipeline] Error: RSA AES-key decrypt failed\n");
+                LOG_ERROR("pipeline", "RSA AES-key decrypt failed\n");
             }
         }
 
@@ -434,11 +434,11 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
 
         if (have_key && crypto_aes_init(&impl->aes_context, aes_key, session->aes_iv) == 0)
         {
-            printf("[pipeline] AES-128-CBC decryption enabled\n");
+            LOG_INFO("pipeline", "AES-128-CBC decryption enabled\n");
         }
         else
         {
-            fprintf(stderr, "[pipeline] Warning: Failed to initialize AES decryption\n");
+            LOG_ERROR("pipeline", "Failed to initialize AES decryption\n");
             return -1;
         }
     }
@@ -458,7 +458,7 @@ int audio_pipeline_start(audio_pipeline_t *pipeline)
 
     if (!impl->configured)
     {
-        fprintf(stderr, "[pipeline] Cannot start - not configured\n");
+        LOG_ERROR("pipeline", "Cannot start - not configured\n");
         return -1;
     }
 
@@ -469,7 +469,7 @@ int audio_pipeline_start(audio_pipeline_t *pipeline)
     impl->decoded_packets = 0;
     impl->nonzero_packets = impl->queue_overflows = impl->late_packets = 0;
 
-    printf("[pipeline] Started playback\n");
+    LOG_INFO("pipeline", "Started playback\n");
 
     return 0;
 }
@@ -490,7 +490,7 @@ static int audio_pipeline_flush(audio_pipeline_t *pipeline)
     impl->packets_received = 0;
     impl->packets_lost = 0;
 
-    printf("[pipeline] Flushed audio buffers\n");
+    LOG_DEBUG("pipeline", "Flushed audio buffers\n");
 
     return 0;
 }
@@ -505,7 +505,7 @@ int audio_pipeline_stop(audio_pipeline_t *pipeline)
 
     audio_pipeline_flush(pipeline);
 
-    printf("[pipeline] Stopped playback\n");
+    LOG_INFO("pipeline", "Stopped playback\n");
 
     return 0;
 }
@@ -538,7 +538,7 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
                 break;
             if (!impl->fallback_logged)
             {
-                fprintf(stderr, "[sync] No sender clock/anchor; using relative 2 s buffering\n");
+                LOG_WARN("sync", "No sender clock/anchor; using relative 2 s buffering\n");
                 impl->fallback_logged = 1;
             }
             deadline = impl->first_arrival_us + 2000000 +
@@ -583,7 +583,7 @@ int audio_pipeline_set_volume(audio_pipeline_t *pipeline, float volume_db)
     impl->volume_db = volume_db;
     impl->volume_linear = volume_db <= -120.0f ? 0.0f : powf(10.0f, volume_db / 20.0f);
 
-    printf("[pipeline] Volume set to %.3f dB\n", volume_db);
+    LOG_INFO("pipeline", "Volume set to %.3f dB\n", volume_db);
 
     return 0;
 }
@@ -612,7 +612,7 @@ void audio_pipeline_close(audio_pipeline_t *pipeline)
         impl->ntp_sync_initialized = 0;
     }
 
-    printf("[pipeline] Closed audio pipeline\n");
+    LOG_INFO("pipeline", "Closed audio pipeline\n");
 
     // Note: User is responsible for freeing the pipeline structure
 }

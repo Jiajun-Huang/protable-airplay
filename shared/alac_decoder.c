@@ -1,4 +1,5 @@
 #include "alac_decoder.h"
+#include "log.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -39,10 +40,10 @@ int alac_decoder_init(alac_decoder_t *decoder,
         for (size_t i = 0; i < decoder->fmtp_count; i++)
             decoder->fmtp[i] = fmtp[i];
 
-        printf("[alac] fmtp_count=%zu values:", decoder->fmtp_count);
+        LOG_DEBUG("alac", "fmtp_count=%zu values:", decoder->fmtp_count);
         for (size_t i = 0; i < decoder->fmtp_count; i++)
-            printf(" %u", decoder->fmtp[i]);
-        printf("\n");
+            LOG_DEBUG("alac", " %u", decoder->fmtp[i]);
+        LOG_DEBUG("alac", "\n");
     }
 
     alac_file *alac = alac_create(decoder->bit_depth, decoder->channels);
@@ -67,9 +68,9 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     decoder->impl = (void *)alac;
 
-    printf("[alac] Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
+    LOG_INFO("alac", "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
            decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
-    printf("[alac] setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
+    LOG_DEBUG("alac", "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
            alac->setinfo_max_samples_per_frame,
            alac->setinfo_7a,
            alac->setinfo_sample_size,

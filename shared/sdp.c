@@ -1,4 +1,5 @@
 #include "sdp.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -167,7 +168,7 @@ int sdp_parse(const uint8_t *sdp_data,
                     }
                     else
                     {
-                        printf("[sdp] Unknown rtpmap codec '%s'\n", codec_name);
+                        LOG_WARN("sdp", "Unknown rtpmap codec '%s'\n", codec_name);
                     }
                 }
             }
@@ -238,7 +239,7 @@ int sdp_parse(const uint8_t *sdp_data,
         if (session->alac_fmtp_count >= 11 && session->sample_rate == 0)
             session->sample_rate = session->alac_fmtp[10];
 
-        printf("[sdp] Inferred ALAC codec from fmtp (%zu params)\n", session->alac_fmtp_count);
+        LOG_DEBUG("sdp", "Inferred ALAC codec from fmtp (%zu params)\n", session->alac_fmtp_count);
     }
 
     // Sanitize ALAC/PCM essentials to known-good ranges used by AirPlay senders.
@@ -251,7 +252,7 @@ int sdp_parse(const uint8_t *sdp_data,
     if (session->bits_per_sample != 16 && session->bits_per_sample != 24)
         session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
-    printf("[sdp] Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
+    LOG_DEBUG("sdp", "Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
            session->codec, session->sample_rate, session->channels,
            session->bits_per_sample, session->frames_per_packet);
 

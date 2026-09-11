@@ -1,4 +1,5 @@
 #include "rtsp.h"
+#include "log.h"
 #include "airplay/airplay_rtsp.h"
 #include "network_util.h"
 
@@ -172,7 +173,7 @@ int rtsp_send_response(rtsp_client_t *client, int status, const char *status_tex
 static int handle_request(rtsp_instance_t *instance, rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
-    printf("[rtsp] %s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
+    LOG_DEBUG("rtsp", "%s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
            request->version, client->peer.ip, request->cseq, request->method,
            request->uri, request->body_len);
     switch (request->method)
@@ -321,7 +322,7 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
                 break;
             if (parsed < 0)
             {
-                printf("[rtsp] Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
+                LOG_WARN("rtsp", "Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
                 rtsp_send_response(client, 400, "Bad Request", 0, NULL, NULL, 0);
                 close_client(instance, i);
                 break;

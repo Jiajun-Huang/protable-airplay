@@ -31,13 +31,13 @@
 
 static const int host_bigendian = 0;
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
 
 #include "alac.h"
+#include "log.h"
 
 static alac_file g_alac_pool[ALAC_MAX_CONTEXTS];
 
@@ -69,7 +69,7 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
 
   if (outputsamples <= 0 || outputsamples > (int32_t)alac->setinfo_max_samples_per_frame)
   {
-    fprintf(stderr, "FIXME: Invalid output sample count %d (max %u) - %s.\n",
+    LOG_ERROR("alac", "Invalid output sample count %d (max %u) - %s.\n",
             outputsamples, alac->setinfo_max_samples_per_frame, errtag);
     *outputsize = 0;
     return -1;
@@ -78,7 +78,7 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
   int64_t required = (int64_t)outputsamples * (int64_t)alac->bytespersample;
   if (required <= 0 || required > INT_MAX || required > outbuffer_allocation_size)
   {
-    fprintf(stderr, "FIXME: Not enough space if the output buffer for audio frame - %s.\n", errtag);
+    LOG_ERROR("alac", "Not enough space if the output buffer for audio frame - %s.\n", errtag);
     *outputsize = 0;
     return -1;
   }
@@ -169,7 +169,7 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
 
   if (alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
   {
-    fprintf(stderr, "[alac] Clamping max_samples_per_frame %u to %u for static buffers.\n",
+    LOG_WARN("alac", "Clamping max_samples_per_frame %u to %u for static buffers.\n",
             alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
     alac->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
   }
@@ -832,7 +832,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
       }
       else
       {
-        fprintf(stderr, "FIXME: unhandled prediction type for compressed case: %i (fallback to adaptive FIR)\n",
+        LOG_WARN("alac", "Unhandled prediction type for compressed case: %i (fallback to adaptive FIR)\n",
                 prediction_type);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_a, alac->outputsamples_buffer_a,
                                        outputsamples, readsamplesize, predictor_coef_table,
@@ -916,7 +916,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
     }
     case 20:
     case 32:
-      fprintf(stderr, "FIXME: unimplemented sample size %i\n", alac->setinfo_sample_size);
+      LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
       break;
     default:
       break;
@@ -1051,7 +1051,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
       }
       else
       { /* see mono case */
-        fprintf(stderr, "FIXME: unhandled prediction type on channel 1: %i (fallback to adaptive FIR)\n", prediction_type_a);
+        LOG_WARN("alac", "Unhandled prediction type on channel 1: %i (fallback to adaptive FIR)\n", prediction_type_a);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_a, alac->outputsamples_buffer_a,
                                        outputsamples, readsamplesize, predictor_coef_table_a,
                                        predictor_coef_num_a, prediction_quantitization_a);
@@ -1071,7 +1071,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
       }
       else
       {
-        fprintf(stderr, "FIXME: unhandled prediction type on channel 2: %i (fallback to adaptive FIR)\n", prediction_type_b);
+        LOG_WARN("alac", "Unhandled prediction type on channel 2: %i (fallback to adaptive FIR)\n", prediction_type_b);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_b, alac->outputsamples_buffer_b,
                                        outputsamples, readsamplesize, predictor_coef_table_b,
                                        predictor_coef_num_b, prediction_quantitization_b);
@@ -1141,7 +1141,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
     }
     case 20:
     case 32:
-      fprintf(stderr, "FIXME: unimplemented sample size %i\n", alac->setinfo_sample_size);
+      LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
       break;
     default:
       break;
@@ -1189,6 +1189,6 @@ alac_file *alac_create(int samplesize, int numchannels)
     }
   }
 
-  fprintf(stderr, "[alac] No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
+  LOG_ERROR("alac", "No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
   return NULL;
 }
