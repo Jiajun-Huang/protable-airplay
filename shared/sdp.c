@@ -19,6 +19,28 @@ static void to_lower_ascii(char *s)
 // Base64 decode table
 static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+static int parse_hex_bytes(const char *text, uint8_t *output, size_t capacity)
+{
+    size_t length = 0;
+    while (text[0] && text[1] && text[0] != ';' && text[1] != ';')
+    {
+        unsigned high, low;
+        if (text[0] >= '0' && text[0] <= '9') high = (unsigned)(text[0] - '0');
+        else if (text[0] >= 'a' && text[0] <= 'f') high = (unsigned)(text[0] - 'a' + 10);
+        else if (text[0] >= 'A' && text[0] <= 'F') high = (unsigned)(text[0] - 'A' + 10);
+        else break;
+        if (text[1] >= '0' && text[1] <= '9') low = (unsigned)(text[1] - '0');
+        else if (text[1] >= 'a' && text[1] <= 'f') low = (unsigned)(text[1] - 'a' + 10);
+        else if (text[1] >= 'A' && text[1] <= 'F') low = (unsigned)(text[1] - 'A' + 10);
+        else break;
+        if (length >= capacity)
+            return -1;
+        output[length++] = (uint8_t)((high << 4) | low);
+        text += 2;
+    }
+    return length ? (int)length : -1;
+}
+
 int sdp_base64_decode(const char *input, uint8_t *output, size_t output_size)
 {
     if (!input || !output || output_size == 0)
@@ -155,6 +177,7 @@ int sdp_parse(const uint8_t *sdp_data,
                     {
                         session->codec = SDP_CODEC_AAC;
                         session->sample_rate = rate;
+                        session->frames_per_packet = 1024;
                         if (fields >= 3)
                             session->channels = (uint16_t)channels;
                     }
@@ -179,6 +202,24 @@ int sdp_parse(const uint8_t *sdp_data,
                 if (params)
                 {
                     params++;
+                    if (session->codec == SDP_CODEC_AAC)
+                    {
+                        const char *config = strstr(params, "config=");
+                        const char *size_length = strstr(params, "sizelength=");
+                        const char *index_length = strstr(params, "indexlength=");
+                        const char *index_delta = strstr(params, "indexdeltalength=");
+                        if (config)
+                        {
+                            int config_len = parse_hex_bytes(config + 7,
+                                                             session->aac_config,
+                                                             sizeof(session->aac_config));
+                            session->aac_config_len = config_len > 0 ? (size_t)config_len : 0;
+                        }
+                        session->aac_size_length = size_length ? (uint8_t)atoi(size_length + 11) : 13;
+                        session->aac_index_length = index_length ? (uint8_t)atoi(index_length + 12) : 3;
+                        session->aac_index_delta_length = index_delta ? (uint8_t)atoi(index_delta + 18) : 3;
+                        break;
+                    }
                     // Parse ALAC configuration
                     unsigned int vals[12];
                     int count = sscanf(params, "%u %u %u %u %u %u %u %u %u %u %u",
@@ -253,8 +294,8 @@ int sdp_parse(const uint8_t *sdp_data,
         session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
     LOG_DEBUG("sdp", "Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
-           session->codec, session->sample_rate, session->channels,
-           session->bits_per_sample, session->frames_per_packet);
+              session->codec, session->sample_rate, session->channels,
+              session->bits_per_sample, session->frames_per_packet);
 
     return 0;
 }

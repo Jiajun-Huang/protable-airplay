@@ -44,6 +44,18 @@ int main(void)
     sdp_session_t session;
     CHECK(sdp_parse((const uint8_t *)sdp, strlen(sdp), &session, scratch, sizeof(scratch)) == 0);
     CHECK(session.codec == SDP_CODEC_PCM && session.channels == 2 && session.sample_rate == 44100);
+        const char aac_sdp[] =
+          "v=0\r\nm=audio 0 RTP/AVP 96\r\n"
+          "a=rtpmap:96 MPEG4-GENERIC/44100/2\r\n"
+          "a=fmtp:96 streamtype=5;profile-level-id=15;mode=AAC-hbr;"
+          "sizelength=13;indexlength=3;indexdeltalength=3;config=1210\r\n";
+        CHECK(sdp_parse((const uint8_t *)aac_sdp, strlen(aac_sdp), &session,
+                  scratch, sizeof(scratch)) == 0);
+        CHECK(session.codec == SDP_CODEC_AAC && session.channels == 2 &&
+            session.sample_rate == 44100 && session.frames_per_packet == 1024);
+        CHECK(session.aac_config_len == 2 && session.aac_config[0] == 0x12 &&
+            session.aac_config[1] == 0x10 && session.aac_size_length == 13 &&
+            session.aac_index_length == 3 && session.aac_index_delta_length == 3);
     CHECK(sdp_parse((const uint8_t *)sdp, strlen(sdp), &session, scratch, 2) < 0);
 
     ntp_timestamp_t a = {100, 0x80000000u}, b = {101, 0};

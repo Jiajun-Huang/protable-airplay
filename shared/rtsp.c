@@ -174,8 +174,8 @@ static int handle_request(rtsp_instance_t *instance, rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     LOG_DEBUG("rtsp", "%s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
-           request->version, client->peer.ip, request->cseq, request->method,
-           request->uri, request->body_len);
+              request->version, client->peer.ip, request->cseq, request->method,
+              request->uri, request->body_len);
     switch (request->method)
     {
     case RTSP_METHOD_OPTIONS:

@@ -164,7 +164,7 @@ int main(int argc, char **argv)
         goto server_done;
     }
     LOG_INFO("main", "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
-           config.device_name, config.local_ip, config.local_mac_hex);
+             config.device_name, config.local_ip, config.local_mac_hex);
     for (started = 0; started < 3; ++started)
     {
         threads[started] = CreateThread(NULL, 0, entries[started], &server, 0, NULL);

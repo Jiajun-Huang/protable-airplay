@@ -10,6 +10,7 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/aes.h>
+#include <mbedtls/chachapoly.h>
 
 static const char airport_private_key[] =
     "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -123,4 +124,42 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t 
 
     mbedtls_aes_free(&aes);
     return ret == 0 ? 0 : -1;
+}
+
+int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
+                                const uint8_t *full_packet, size_t full_packet_len,
+                                size_t payload_offset, size_t payload_len,
+                                uint8_t *output, size_t output_capacity,
+                                size_t *output_len)
+{
+    mbedtls_chachapoly_context context;
+    uint8_t nonce[12] = {0};
+    const uint8_t *payload;
+    const uint8_t *tag;
+    size_t encrypted_len;
+    int ret;
+
+    if (!key || !full_packet || full_packet_len < 12 || !output || !output_len ||
+        payload_offset > full_packet_len || payload_len > full_packet_len - payload_offset ||
+        payload_len < 24)
+        return -1;
+    encrypted_len = payload_len - 8;
+    if (encrypted_len < 16 || encrypted_len - 16 > output_capacity)
+        return -1;
+
+    payload = full_packet + payload_offset;
+    memcpy(nonce + 4, payload + encrypted_len, 8);
+    tag = payload + encrypted_len - 16;
+
+    mbedtls_chachapoly_init(&context);
+    ret = mbedtls_chachapoly_setkey(&context, key);
+    if (ret == 0)
+        ret = mbedtls_chachapoly_auth_decrypt(&context, encrypted_len - 16,
+                                              nonce, full_packet + 4, 8,
+                                              tag, payload, output);
+    mbedtls_chachapoly_free(&context);
+    if (ret != 0)
+        return -1;
+    *output_len = encrypted_len - 16;
+    return 0;
 }

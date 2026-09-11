@@ -70,7 +70,7 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
   if (outputsamples <= 0 || outputsamples > (int32_t)alac->setinfo_max_samples_per_frame)
   {
     LOG_ERROR("alac", "Invalid output sample count %d (max %u) - %s.\n",
-            outputsamples, alac->setinfo_max_samples_per_frame, errtag);
+              outputsamples, alac->setinfo_max_samples_per_frame, errtag);
     *outputsize = 0;
     return -1;
   }
@@ -170,7 +170,7 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
   if (alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
   {
     LOG_WARN("alac", "Clamping max_samples_per_frame %u to %u for static buffers.\n",
-            alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
+             alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
     alac->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
   }
 
@@ -833,7 +833,7 @@ static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *o
       else
       {
         LOG_WARN("alac", "Unhandled prediction type for compressed case: %i (fallback to adaptive FIR)\n",
-                prediction_type);
+                 prediction_type);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_a, alac->outputsamples_buffer_a,
                                        outputsamples, readsamplesize, predictor_coef_table,
                                        predictor_coef_num, prediction_quantitization);

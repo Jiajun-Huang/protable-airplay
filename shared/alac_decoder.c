@@ -69,19 +69,19 @@ int alac_decoder_init(alac_decoder_t *decoder,
     decoder->impl = (void *)alac;
 
     LOG_INFO("alac", "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
-           decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
+             decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
     LOG_DEBUG("alac", "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
-           alac->setinfo_max_samples_per_frame,
-           alac->setinfo_7a,
-           alac->setinfo_sample_size,
-           alac->setinfo_rice_historymult,
-           alac->setinfo_rice_initialhistory,
-           alac->setinfo_rice_kmodifier,
-           alac->setinfo_7f,
-           alac->setinfo_80,
-           alac->setinfo_82,
-           alac->setinfo_86,
-           alac->setinfo_8a_rate);
+              alac->setinfo_max_samples_per_frame,
+              alac->setinfo_7a,
+              alac->setinfo_sample_size,
+              alac->setinfo_rice_historymult,
+              alac->setinfo_rice_initialhistory,
+              alac->setinfo_rice_kmodifier,
+              alac->setinfo_7f,
+              alac->setinfo_80,
+              alac->setinfo_82,
+              alac->setinfo_86,
+              alac->setinfo_8a_rate);
 
     return 0;
 }

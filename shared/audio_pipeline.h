@@ -6,6 +6,7 @@
 #include "rtp.h"
 #include "sdp.h"
 #include "alac_decoder.h"
+#include "aac_decoder.h"
 #include "crypto.h"
 #include "ntp_sync.h"
 #include "playout.h"
@@ -40,6 +41,7 @@ typedef struct
 
     // Decoder and crypto (user-managed memory)
     alac_decoder_t alac_decoder;      // Embedded decoder
+    aac_decoder_t aac_decoder;        // Embedded decoder
     crypto_aes_context_t aes_context; // Embedded AES context
     ntp_sync_t ntp_sync;              // Embedded NTP sync state
     int ntp_sync_initialized;

@@ -76,7 +76,7 @@ int main(int argc, char **argv)
         return 1;
     }
     LOG_INFO("main", "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
-           config.device_name, config.local_ip, config.local_mac_hex);
+             config.device_name, config.local_ip, config.local_mac_hex);
     for (started = 0; started < 3; ++started)
     {
         if (pthread_create(&threads[started], NULL, entries[started], &server) != 0)

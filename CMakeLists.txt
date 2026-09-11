@@ -14,6 +14,7 @@ set(AIRPLAY_PLATFORM "${default_platform}" CACHE STRING "windows, apple, linux, 
 set_property(CACHE AIRPLAY_PLATFORM PROPERTY STRINGS windows apple linux embedded)
 set(AIRPLAY_PLATFORM_INCLUDE_DIRS "" CACHE STRING "Board, FreeRTOS, and lwIP include directories")
 set(AIRPLAY_MBEDTLS_SOURCE_DIR "" CACHE PATH "Existing mbedTLS 2.28 source directory")
+option(AIRPLAY_ENABLE_FDK_AAC "Build and link the FDK-AAC decoder dependency" ON)
 
 # A board project can supply its configured mbedcrypto target before add_subdirectory.
 if(NOT TARGET mbedcrypto)
@@ -37,15 +38,30 @@ if(NOT TARGET mbedcrypto)
     endif()
 endif()
 
+if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
+    include(FetchContent)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(FDK_AAC_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+    set(FDK_AAC_INSTALL_PKGCONFIG_MODULE OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(fdk_aac
+        URL https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v2.0.3.tar.gz)
+    FetchContent_MakeAvailable(fdk_aac)
+endif()
+
 add_library(airplay_core STATIC
     shared/server.c
     shared/rtsp.c shared/rtp.c shared/mdns.c shared/sdp.c
     shared/network_util.c shared/ntp_sync.c shared/log.c
-    shared/audio_pipeline.c shared/playout.c shared/alac_decoder.c shared/alac.c shared/crypto.c
+    shared/audio_pipeline.c shared/playout.c shared/alac_decoder.c shared/aac_decoder.c shared/alac.c shared/crypto.c
     shared/airplay/airplay_auth.c shared/airplay/airplay_rtsp.c
     shared/airplay/airplay_discovery.c)
 target_include_directories(airplay_core PUBLIC . shared platform)
 target_link_libraries(airplay_core PUBLIC mbedcrypto)
+if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
+    target_link_libraries(airplay_core PRIVATE FDK-AAC::fdk-aac)
+    target_compile_definitions(airplay_core PRIVATE AIRPLAY_ENABLE_FDK_AAC=1)
+endif()
 if(NOT WIN32)
     target_link_libraries(airplay_core PUBLIC m)
 endif()

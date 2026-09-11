@@ -36,6 +36,13 @@ typedef struct
     uint32_t alac_fmtp[12]; // Parsed fmtp parameters for ALAC
     size_t alac_fmtp_count; // Number of valid fmtp parameters
 
+    // MPEG-4 AAC-specific
+    uint8_t aac_config[64]; // AudioSpecificConfig from fmtp=config
+    size_t aac_config_len;
+    uint8_t aac_size_length;
+    uint8_t aac_index_length;
+    uint8_t aac_index_delta_length;
+
     // Encryption
     uint8_t aes_key_encrypted[512]; // RSA-encrypted AES key from SDP (base64 or binary)
     size_t aes_key_encrypted_len;   // Length of encrypted AES key
