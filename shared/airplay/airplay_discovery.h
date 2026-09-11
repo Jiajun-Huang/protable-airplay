@@ -2,30 +2,27 @@
 #define AIRPLAY_DISCOVERY_H
 
 #include <stddef.h>
-
-#include "udp_if.h"
 #include "mdns.h"
 
-/**
- * Initialize dual-service mDNS discovery (RAOP + AirPlay) using one UDP socket.
- * Returns 0 on success, negative on failure.
- */
-int airplay_discovery_init(const char *friendly_name,
+typedef struct {
+    net_socket_t socket;
+    mdns_instance_t service;
+    char raop_name[96];
+    char hostname[96];
+    char local_ip[16];
+    int initialized;
+} airplay_discovery_t;
+
+/* TXT arrays and strings must outlive discovery. Names and IPv4 are copied. */
+int airplay_discovery_init(airplay_discovery_t *discovery,
+                           const char *friendly_name,
                            const char *local_mac,
                            const char *local_ip,
                            const char **raop_txt_entries,
-                           size_t raop_txt_count,
-                           const char **airplay_txt_entries,
-                           size_t airplay_txt_count);
+                           size_t raop_txt_count);
 
-/**
- * Run the discovery receive/respond loop until stop_fn returns non-zero.
- */
-void airplay_discovery_run(int (*stop_fn)(void));
+/* Receive once and dispatch to the audio service. Returns 0 on idle, -1 on I/O failure. */
+int airplay_discovery_poll(airplay_discovery_t *discovery, int timeout_ms);
+void airplay_discovery_deinit(airplay_discovery_t *discovery);
 
-/**
- * Send goodbye records and close socket.
- */
-void airplay_discovery_deinit(void);
-
-#endif // AIRPLAY_DISCOVERY_H
+#endif

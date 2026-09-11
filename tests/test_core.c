@@ -1,0 +1,54 @@
+#include "network_util.h"
+#include "rtp.h"
+#include "sdp.h"
+#include "ntp_sync.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+
+int main(void)
+{
+    uint32_t address;
+    char text[16];
+    CHECK(net_str_to_ipv4("192.168.1.42", &address) == 0);
+    CHECK(memcmp(&address, (uint8_t[]){192,168,1,42}, 4) == 0);
+    CHECK(net_ipv4_to_str(address, text, sizeof(text)) == 0);
+    CHECK(strcmp(text, "192.168.1.42") == 0);
+    CHECK(net_str_to_ipv4("256.1.1.1", &address) < 0);
+    CHECK(net_str_to_ipv4("1.2.3.4x", &address) < 0);
+    CHECK(net_str_to_ipv4("1.2.3", &address) < 0);
+    CHECK(net_ascii_casecmp("Content-Type", "content-type") == 0);
+
+    uint8_t packet[] = {0x80, 0x60, 0x12, 0x34, 0,0,1,0, 0,0,0,9, 0x01,0x02};
+    rtp_packet_t parsed;
+    CHECK(rtp_parse_packet(packet, sizeof(packet), &parsed) == 0);
+    CHECK(parsed.header.sequence == 0x1234 && parsed.header.timestamp == 256);
+    CHECK(parsed.payload_len == 2 && parsed.payload[1] == 2);
+    uint8_t resent[sizeof(packet) + 4] = {0x80, 0xd6, 0, 1};
+    memcpy(resent + 4, packet, sizeof(packet));
+    CHECK(rtp_parse_packet(resent, sizeof(resent), &parsed) == 0);
+    CHECK(parsed.header.payload_type == 96 && parsed.header.sequence == 0x1234 && parsed.payload_len == 2);
+    CHECK(rtp_parse_packet(packet, 11, &parsed) < 0);
+    packet[0] = 0x90; /* Extension bit without an extension header. */
+    CHECK(rtp_parse_packet(packet, sizeof(packet), &parsed) < 0);
+    packet[0] = 0xa0;
+    packet[13] = 3;
+    CHECK(rtp_parse_packet(packet, sizeof(packet), &parsed) < 0);
+    packet[13] = 1;
+    CHECK(rtp_parse_packet(packet, sizeof(packet), &parsed) == 0 && parsed.payload_len == 1);
+
+    const char sdp[] = "v=0\r\nm=audio 0 RTP/AVP 96\r\na=rtpmap:96 L16/44100/2\r\n";
+    char scratch[SDP_SCRATCH_MAX];
+    sdp_session_t session;
+    CHECK(sdp_parse((const uint8_t *)sdp, strlen(sdp), &session, scratch, sizeof(scratch)) == 0);
+    CHECK(session.codec == SDP_CODEC_PCM && session.channels == 2 && session.sample_rate == 44100);
+    CHECK(sdp_parse((const uint8_t *)sdp, strlen(sdp), &session, scratch, 2) < 0);
+
+    ntp_timestamp_t a = {100, 0x80000000u}, b = {101, 0};
+    CHECK(ntp_sync_diff_us(a, b) == 500000);
+    CHECK(ntp_sync_diff_us(b, a) == -500000);
+    puts("Core protocol checks passed");
+    return 0;
+}

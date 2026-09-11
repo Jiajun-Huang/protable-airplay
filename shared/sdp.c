@@ -67,28 +67,31 @@ static const char *sdp_get_line_value(const char *line)
     return line;
 }
 
-int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
+int sdp_parse(const uint8_t *sdp_data,
+              size_t sdp_len,
+              sdp_session_t *session,
+              char *scratch,
+              size_t scratch_len)
 {
-    if (!sdp_data || sdp_len == 0 || !session)
+    if (!sdp_data || sdp_len == 0 || !session || !scratch || scratch_len == 0)
         return -1;
 
     memset(session, 0, sizeof(sdp_session_t));
 
     // Set defaults
-    session->sample_rate = 44100;
-    session->channels = 2;
-    session->bits_per_sample = 16;
+    session->sample_rate = AIRPLAY_DEFAULT_SAMPLE_RATE;
+    session->channels = AIRPLAY_DEFAULT_CHANNELS;
+    session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
     session->payload_type = 96;
 
     // Make null-terminated copy for parsing
-    char *sdp_text = (char *)malloc(sdp_len + 1);
-    if (!sdp_text)
+    if (scratch_len < (sdp_len + 1))
         return -1;
-    memcpy(sdp_text, sdp_data, sdp_len);
-    sdp_text[sdp_len] = '\0';
+    memcpy(scratch, sdp_data, sdp_len);
+    scratch[sdp_len] = '\0';
 
     // Parse line by line
-    char *line = strtok(sdp_text, "\r\n");
+    char *line = strtok(scratch, "\r\n");
     while (line)
     {
         if (strlen(line) < 2)
@@ -106,7 +109,7 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
         {
             char media_type[32];
             unsigned int port;
-            if (sscanf_s(value, "%31s %u", media_type, (unsigned int)sizeof(media_type), &port) >= 2)
+            if (sscanf(value, "%31s %u", media_type, &port) >= 2)
             {
                 if (strcmp(media_type, "audio") == 0)
                 {
@@ -126,14 +129,14 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
             {
                 char codec_name[64];
                 unsigned int rate, channels;
-                int fields = sscanf_s(value + 7, "%*d %63[^/]/%u/%u",
-                                      codec_name, (unsigned int)sizeof(codec_name),
-                                      &rate, &channels);
+                int fields = sscanf(value + 7, "%*d %63[^/]/%u/%u",
+                                    codec_name,
+                                    &rate, &channels);
                 if (fields < 2)
                 {
-                    fields = sscanf_s(value + 7, "%*d %63[^/]/%u",
-                                      codec_name, (unsigned int)sizeof(codec_name),
-                                      &rate);
+                    fields = sscanf(value + 7, "%*d %63[^/]/%u",
+                                    codec_name,
+                                    &rate);
                 }
 
                 if (fields >= 2)
@@ -177,9 +180,9 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
                     params++;
                     // Parse ALAC configuration
                     unsigned int vals[12];
-                    int count = sscanf_s(params, "%u %u %u %u %u %u %u %u %u %u %u",
-                                         &vals[0], &vals[1], &vals[2], &vals[3], &vals[4],
-                                         &vals[5], &vals[6], &vals[7], &vals[8], &vals[9], &vals[10]);
+                    int count = sscanf(params, "%u %u %u %u %u %u %u %u %u %u %u",
+                                       &vals[0], &vals[1], &vals[2], &vals[3], &vals[4],
+                                       &vals[5], &vals[6], &vals[7], &vals[8], &vals[9], &vals[10]);
                     if (count >= 3)
                     {
                         session->alac_fmtp_count = (size_t)count;
@@ -192,14 +195,6 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
                             session->channels = (uint16_t)vals[6];
                         if (count >= 11)
                             session->sample_rate = vals[10];
-                    }
-
-                    // Keep legacy compact config for compatibility paths
-                    session->alac_config_len = 0;
-                    if (count >= 8)
-                    {
-                        for (int i = 0; i < count && i < 12 && session->alac_config_len < sizeof(session->alac_config); i++)
-                            session->alac_config[session->alac_config_len++] = (uint8_t)(vals[i] & 0xFF);
                     }
                 }
             }
@@ -229,8 +224,6 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
         line = strtok(NULL, "\r\n");
     }
 
-    free(sdp_text);
-
     // Fallback inference: many senders provide ALAC fmtp but inconsistent/omitted rtpmap.
     // Treat valid ALAC fmtp as ALAC session instead of leaving codec unknown.
     if (session->codec == SDP_CODEC_UNKNOWN && session->alac_fmtp_count >= 3)
@@ -250,13 +243,13 @@ int sdp_parse(const uint8_t *sdp_data, size_t sdp_len, sdp_session_t *session)
 
     // Sanitize ALAC/PCM essentials to known-good ranges used by AirPlay senders.
     if (session->frames_per_packet == 0 || session->frames_per_packet > 8192)
-        session->frames_per_packet = 352;
+        session->frames_per_packet = AIRPLAY_DEFAULT_FRAMES_PER_PACKET;
     if (session->sample_rate < 8000 || session->sample_rate > 192000)
-        session->sample_rate = 44100;
+        session->sample_rate = AIRPLAY_DEFAULT_SAMPLE_RATE;
     if (session->channels == 0 || session->channels > 2)
-        session->channels = 2;
+        session->channels = AIRPLAY_DEFAULT_CHANNELS;
     if (session->bits_per_sample != 16 && session->bits_per_sample != 24)
-        session->bits_per_sample = 16;
+        session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
     printf("[sdp] Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
            session->codec, session->sample_rate, session->channels,

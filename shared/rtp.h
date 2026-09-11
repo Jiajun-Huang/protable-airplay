@@ -3,10 +3,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "udp_if.h"
+#include "net.h"
 
-/* Keep buffers reasonably sized for typical AirPlay RTP payloads. */
-#define RTP_BUFFER_SIZE 4096
+#include "airplay_config.h"
 
 typedef struct
 {
@@ -30,7 +29,7 @@ typedef struct
 
 typedef void (*rtp_audio_callback)(const rtp_packet_t *packet, void *user_data);
 typedef void (*rtp_control_callback)(const uint8_t *data, size_t len, void *user_data);
-typedef void (*rtp_timing_callback)(const uint8_t *data, size_t len, void *user_data);
+typedef void (*rtp_timing_callback)(const uint8_t *data, size_t len, const net_addr_t *peer, void *user_data);
 
 typedef struct
 {
@@ -45,17 +44,15 @@ typedef struct
 
 typedef struct
 {
-    udp_socket_t audio_socket;
-    udp_socket_t control_socket;
-    udp_socket_t timing_socket;
-    int audio_open;
-    int control_open;
-    int timing_open;
+    net_socket_t audio_socket;
+    net_socket_t control_socket;
+    net_socket_t timing_socket;
     rtp_receiver_config_t config;
     uint8_t audio_buffer[RTP_BUFFER_SIZE];
     uint8_t control_buffer[RTP_BUFFER_SIZE];
     uint8_t timing_buffer[RTP_BUFFER_SIZE];
     uint32_t audio_packet_count;
+    char peer_ip[16];
 } rtp_receiver_t;
 
 int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet);

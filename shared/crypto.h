@@ -23,7 +23,7 @@ typedef struct
 
 /**
  * @brief Decrypt RSA-encrypted AES key
- * Uses hardcoded AirPort Express private key for proof-of-concept
+ * Uses the AirPort Express RSA key required by this RAOP authentication scheme.
  *
  * @param encrypted_key RSA-encrypted AES key (base64 or binary)
  * @param encrypted_len length of encrypted data

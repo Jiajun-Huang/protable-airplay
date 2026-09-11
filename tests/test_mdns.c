@@ -1,134 +1,65 @@
-/**
- * @brief mDNS multicast test
- * Tests UDP multicast and self-running mDNS server
- */
-
+#include "mdns.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include "../shared/mdns.h"
-#include "../shared/network_util.h"
-#include "../platform/udp_if.h"
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <windows.h>
-#define sleep_ms(ms) Sleep(ms)
-#else
-#include <unistd.h>
-#define sleep_ms(ms) usleep((ms) * 1000)
-#endif
-
-#define TEST_SERVICE_NAME "TestSpeaker"
-
-static udp_socket_t g_mdns_send_sock;
-
-void test_mdns_announcement(void)
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+static uint8_t sent[1500];
+static size_t sent_length;
+static net_addr_t destination;
+static int sends;
+int net_udp_send(net_socket_t *s, const void *data, size_t n, const net_addr_t *peer)
 {
-    printf("\n=== Test: mDNS Platform-Driven Server ===\n");
-
-    const char *txt_entries[] = {
-        "txtvers=1",
-        "ch=2",
-        "cn=0",
-        "tp=UDP"};
-
-    mdns_config_t config = {
-        .service_type = "_raop._tcp.local",
-        .instance_name = TEST_SERVICE_NAME,
-        .hostname = "testspeaker.local",
-        .port = 5000,
-        .ipv4 = "192.168.1.100",
-        .txt_entries = txt_entries,
-        .txt_count = 4};
-
-    mdns_instance_t mdns;
-    mdns_error_t result = mdns_create(&mdns, &config, &g_mdns_send_sock);
-    assert(result == MDNS_OK);
-    printf("[Test] ✓ mDNS instance created\n");
-
-    result = mdns_announce(&mdns);
-    assert(result == MDNS_OK);
-    printf("[Test] ✓ Sent announcement\n");
-
-    result = mdns_goodbye(&mdns);
-    assert(result == MDNS_OK);
-    printf("[Test] ✓ Sent goodbye\n");
+    (void)s; CHECK(n <= sizeof(sent)); memcpy(sent, data, n);
+    sent_length = n; destination = *peer; ++sends; return (int)n;
 }
-
-void test_udp_multicast(void)
+static unsigned u16(const uint8_t *p) { return (unsigned)p[0] * 256 + p[1]; }
+static size_t skip_name(size_t p)
 {
-    printf("\n=== Test: UDP Multicast Socket ===\n");
-
-    // Create UDP socket
-    udp_socket_t sock;
-    int result = udp_create(&sock, NET_MDNS_PORT);
-    if (result != 0)
-    {
-        printf("[Test] ✗ Failed to create UDP socket (may need admin/root)\n");
-        return;
-    }
-    printf("[Test] ✓ UDP socket created on port %d\n", NET_MDNS_PORT);
-
-    // Join multicast group
-    result = udp_join_multicast(&sock, NET_MDNS_MCAST_ADDR, NULL);
-    if (result != 0)
-    {
-        printf("[Test] ✗ Failed to join multicast group (may need admin/root)\n");
-        udp_close(&sock);
-        return;
-    }
-    printf("[Test] ✓ Joined multicast group %s\n", NET_MDNS_MCAST_ADDR);
-
-    // Listen for packets for 2 seconds
-    printf("[Test] Listening for packets (2 seconds)...\n");
-
-    uint8_t buffer[1500];
-    int total_received = 0;
-
-    for (int i = 0; i < 20; i++) // 20 x 100ms = 2 seconds
-    {
-        char src_ip[64];
-        uint16_t src_port = 0;
-        int len = udp_receive(&sock, buffer, sizeof(buffer), src_ip, &src_port, 100);
-        if (len > 12)
-        {
-            total_received++;
-            printf("[Test]   Received packet: %d bytes from %s:%u\n", len, src_ip, src_port);
-        }
-    }
-
-    printf("[Test] ✓ Received %d packets\n", total_received);
-
-    udp_close(&sock);
-    printf("[Test] ✓ Socket closed\n");
+    while (p < sent_length && sent[p]) { CHECK(sent[p] <= 63); p += 1 + sent[p]; }
+    CHECK(p < sent_length); return p + 1;
 }
-
+static void check_records(unsigned ttl)
+{
+    CHECK(u16(sent + 2) == 0x8400 && u16(sent + 6) == 4);
+    size_t p = 12;
+    unsigned types[] = {12, 33, 1, 16};
+    for (unsigned i = 0; i < 4; ++i) {
+        p = skip_name(p); CHECK(p + 10 <= sent_length);
+        CHECK(u16(sent + p) == types[i]);
+        CHECK(sent[p+4] == 0 && sent[p+5] == 0 && u16(sent+p+6) == ttl);
+        unsigned length = u16(sent+p+8); p += 10;
+        CHECK(p + length <= sent_length);
+        if (types[i] == 1) CHECK(length == 4 && memcmp(sent+p, (uint8_t[]){192,168,1,9},4) == 0);
+        if (types[i] == 33) CHECK(u16(sent+p+4) == 5000);
+        if (types[i] == 16) CHECK(length == 10 && sent[p] == 9 && memcmp(sent+p+1,"txtvers=1",9) == 0);
+        p += length;
+    }
+    CHECK(p == sent_length);
+}
 int main(void)
 {
-    printf("=================================\n");
-    printf("   mDNS Self-Running Test\n");
-    printf("=================================\n");
-
-    if (udp_create(&g_mdns_send_sock, 0) != 0)
-    {
-        printf("[Test] ✗ Failed to create mDNS send socket\n");
-        return 1;
-    }
-
-    // Test mDNS announcement with platform-managed threading model
-    test_mdns_announcement();
-
-    // Optional: Test UDP multicast socket
-    printf("\n[Test] Note: Multicast test may require admin/root privileges\n");
-    test_udp_multicast();
-
-    printf("\n=================================\n");
-    printf("   All tests completed!\n");
-    printf("=================================\n");
-
-    udp_close(&g_mdns_send_sock);
-
-    return 0;
+    const char *txt[] = {"txtvers=1"};
+    mdns_config_t config = {"_raop._tcp.local", "001122334455@TestSpeaker", "TestSpeaker.local",5000,"192.168.1.9",txt,1};
+    net_socket_t socket = NET_SOCKET_INIT;
+    mdns_instance_t mdns;
+    CHECK(mdns_create(&mdns, &config, &socket) == MDNS_OK);
+    CHECK(mdns_announce(&mdns) == MDNS_OK);
+    CHECK(strcmp(destination.ip, MDNS_MCAST_ADDR) == 0 && destination.port == 5353);
+    check_records(60);
+    CHECK(mdns_goodbye(&mdns) == MDNS_OK); check_records(0);
+    uint8_t query[] = {0,0,0,0,0,1,0,0,0,0,0,0, 5,'_','r','a','o','p',4,'_','t','c','p',5,'l','o','c','a','l',0, 0,12,0x80,1};
+    net_addr_t source = {"192.168.1.20", 54321};
+    CHECK(mdns_handle_packet_from(&mdns, query, sizeof(query), &source) == MDNS_OK);
+    CHECK(strcmp(destination.ip, source.ip) == 0 && destination.port == source.port);
+    check_records(4500);
+    query[sizeof(query)-2] = 0;
+    CHECK(mdns_handle_packet_from(&mdns, query, sizeof(query), &source) == MDNS_OK);
+    CHECK(strcmp(destination.ip, MDNS_MCAST_ADDR) == 0);
+    int previous = sends; query[2] = 0x80;
+    CHECK(mdns_handle_packet_from(&mdns, query, sizeof(query), &source) == MDNS_OK && sends == previous);
+    uint8_t loop[] = {0,0,0,0,0,1,0,0,0,0,0,0,0xc0,12,0,12,0,1};
+    CHECK(mdns_handle_packet(&mdns, loop, sizeof(loop)) == MDNS_ERR_INVALID_DATA);
+    CHECK(sends == previous);
+    puts("mDNS wire checks passed"); return 0;
 }

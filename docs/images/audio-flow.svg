@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="550" viewBox="0 0 1120 550" role="img" aria-labelledby="title description">
+<title id="title">AirPlay Speaker audio and timing flow</title><desc id="description">RTSP session and FLUSH state control the packet buffer. Sender timing maps RTP timestamps to local deadlines. Audio output queue depth adjusts submission time. RTP packets move through receive, buffering, scheduling, decryption and decoding with gain, then PCM output.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#60748e"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#2563eb"/></marker></defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#18314b} .title{font-size:27px;font-weight:700;letter-spacing:-.4px} .subtitle{font-size:15px;fill:#586d85} .label{font-size:12px;font-weight:700;letter-spacing:1.5px;fill:#506886} .heading{font-size:19px;font-weight:700} .body{font-size:14px;fill:#526780} .code{font-family:Consolas,monospace;font-size:13px;fill:#23558c}</style>
+<rect width="1120" height="550" rx="24" fill="#f7f9fc"/>
+<text x="36" y="45" class="title" text-anchor="start" >Audio follows the sender's clock</text>
+<text x="36" y="73" class="subtitle" text-anchor="start" >The audio service owns the packet queue, decoder, and output device.</text>
+<rect x="36" y="112" width="304" height="105" rx="12" fill="#edf3fd" stroke="#ccdcf7"/>
+<text x="188" y="143" class="heading" text-anchor="middle" >RTSP session state</text>
+<text x="188" y="172" class="body" text-anchor="middle" >SDP · keys · volume</text>
+<text x="188" y="198" class="body" text-anchor="middle" >RECORD / FLUSH boundaries</text>
+<rect x="408" y="112" width="288" height="105" rx="12" fill="#edf3fd" stroke="#ccdcf7"/>
+<text x="552" y="143" class="heading" text-anchor="middle" >Sender clock</text>
+<text x="552" y="172" class="body" text-anchor="middle" >RAOP timing exchange</text>
+<text x="552" y="198" class="body" text-anchor="middle" >RTP timestamp + sync anchor</text>
+<rect x="760" y="112" width="324" height="105" rx="12" fill="#edf3fd" stroke="#ccdcf7"/>
+<text x="922" y="143" class="heading" text-anchor="middle" >Output queue</text>
+<text x="922" y="172" class="body" text-anchor="middle" >audio_delay_frames()</text>
+<text x="922" y="198" class="body" text-anchor="middle" >Frames waiting in the audio device</text>
+<path d="M188 218 V277 H340 V310" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#blue)"/>
+<text x="199" y="260" class="body" text-anchor="start" >Stream / FLUSH boundary</text>
+<path d="M552 218 V310" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#blue)"/>
+<text x="565" y="246" class="body" text-anchor="start" >Time mapping</text>
+<path d="M922 218 V284 H588 V310" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#blue)"/>
+<text x="906" y="269" class="body" text-anchor="end" >Queued frames</text>
+<rect x="36" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>
+<text x="132" y="344" class="heading" text-anchor="middle" >1  Receive</text>
+<text x="132" y="374" class="body" text-anchor="middle" >RTP audio packets</text>
+<text x="132" y="399" class="body" text-anchor="middle" >Validate packet framing</text>
+<path d="M229 369 H248" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
+<rect x="250" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>
+<text x="346" y="344" class="heading" text-anchor="middle" >2  Buffer</text>
+<text x="346" y="374" class="body" text-anchor="middle" >Compressed packets</text>
+<text x="346" y="399" class="body" text-anchor="middle" >Order · deduplicate</text>
+<path d="M443 369 H462" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
+<rect x="464" y="312" width="192" height="114" rx="12" fill="#e5f5ef" stroke="#a8d8c6"/>
+<text x="560" y="344" class="heading" text-anchor="middle" >3  Schedule</text>
+<text x="560" y="374" class="body" text-anchor="middle" >RTP → local deadline</text>
+<text x="560" y="399" class="body" text-anchor="middle" >Wait until due</text>
+<path d="M657 369 H676" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
+<rect x="678" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>
+<text x="774" y="344" class="heading" text-anchor="middle" >4  Decode</text>
+<text x="774" y="374" class="body" text-anchor="middle" >AES → ALAC / PCM</text>
+<text x="774" y="399" class="body" text-anchor="middle" >Apply volume</text>
+<path d="M871 369 H890" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
+<rect x="892" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>
+<text x="988" y="344" class="heading" text-anchor="middle" >5  Output</text>
+<text x="988" y="374" class="body" text-anchor="middle" >audio_write()</text>
+<text x="988" y="399" class="body" text-anchor="middle" >Native audio / DMA</text>
+<text x="36" y="465" class="body" text-anchor="start" >PCM output: signed 16-bit samples, interleaved by channel.</text>
+<text x="36" y="495" class="body" text-anchor="start" >Packets are decoded near their playback deadline, accounting for queued output frames.</text>
+<path d="M792 464 H834" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#blue)"/>
+<text x="846" y="469" class="body" text-anchor="start" >Control / timing</text>
+<path d="M792 495 H834" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
+<text x="846" y="500" class="body" text-anchor="start" >Audio data</text>
+</svg>

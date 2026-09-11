@@ -3,7 +3,6 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <time.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -58,12 +57,6 @@ extern "C"
 #define LOG_INFO(tag, ...) log_message(LOG_LEVEL_INFO, tag, __VA_ARGS__)
 #define LOG_WARN(tag, ...) log_message(LOG_LEVEL_WARN, tag, __VA_ARGS__)
 #define LOG_ERROR(tag, ...) log_message(LOG_LEVEL_ERROR, tag, __VA_ARGS__)
-
-/* Legacy printf-style macros for RTSP */
-#define LOG_RTSP_INFO(...) LOG_INFO("RTSP", __VA_ARGS__)
-#define LOG_RTSP_DEBUG(...) LOG_DEBUG("RTSP", __VA_ARGS__)
-#define LOG_RTSP_WARN(...) LOG_WARN("RTSP", __VA_ARGS__)
-#define LOG_RTSP_ERROR(...) LOG_ERROR("RTSP", __VA_ARGS__)
 
 #ifdef __cplusplus
 }

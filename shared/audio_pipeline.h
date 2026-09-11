@@ -8,8 +8,7 @@
 #include "alac_decoder.h"
 #include "crypto.h"
 #include "ntp_sync.h"
-
-#define MAX_AUDIO_BUFFER_SAMPLES (48000 * 2) // 1 second stereo @ 48kHz
+#include "playout.h"
 
 /**
  * @brief Audio pipeline state
@@ -19,8 +18,6 @@ typedef enum
     AUDIO_PIPELINE_STOPPED = 0,
     AUDIO_PIPELINE_READY,
     AUDIO_PIPELINE_PLAYING,
-    AUDIO_PIPELINE_PAUSED,
-    AUDIO_PIPELINE_FLUSHING,
 } audio_pipeline_state_t;
 
 /**
@@ -32,30 +29,35 @@ typedef enum
 typedef struct
 {
     rtp_receiver_t rtp;
-    uint16_t audio_port;
-    uint16_t control_port;
-    uint16_t timing_port;
     void (*on_audio_data)(const int16_t *samples, size_t sample_count, void *user_data);
-    void (*on_state_change)(audio_pipeline_state_t state, void *user_data);
     void *user_data;
+    int (*output_delay_frames)(void *user_data);
 
     sdp_session_t session;
     int state; // audio_pipeline_state_t
     float volume_db;
+    float volume_linear;
 
     // Decoder and crypto (user-managed memory)
     alac_decoder_t alac_decoder;      // Embedded decoder
     crypto_aes_context_t aes_context; // Embedded AES context
-    ntp_sync_t *ntp_sync;             // Still a pointer until refactored
+    ntp_sync_t ntp_sync;              // Embedded NTP sync state
+    int ntp_sync_initialized;
+    playout_t playout;
+    net_addr_t timing_peer;
+    uint64_t first_arrival_us;
+    uint32_t first_timestamp, queue_overflows, late_packets, nonzero_packets;
+    int fallback_logged;
 
     // Audio buffer for decoded samples
     int16_t audio_buffer[MAX_AUDIO_BUFFER_SAMPLES];
-    size_t audio_buffer_fill;
 
     // RTP packet tracking
     uint16_t last_sequence;
     uint32_t packets_received;
     uint32_t packets_lost;
+    uint32_t decode_errors;
+    uint32_t decoded_packets;
 
     int configured;
 } audio_pipeline_t;
@@ -72,8 +74,8 @@ typedef struct
 
     // Callbacks for decoded audio
     void (*on_audio_data)(const int16_t *samples, size_t sample_count, void *user_data);
-    void (*on_state_change)(audio_pipeline_state_t state, void *user_data);
     void *user_data;
+    int (*output_delay_frames)(void *user_data);
 } audio_pipeline_config_t;
 
 /**
@@ -95,6 +97,8 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
  * @return 0 on success, negative on error
  */
 int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *session);
+void audio_pipeline_set_transport(audio_pipeline_t *pipeline, const net_addr_t *timing_peer);
+void audio_pipeline_set_start(audio_pipeline_t *pipeline, uint32_t timestamp, int exclusive);
 
 /**
  * @brief Start audio playback
@@ -106,24 +110,8 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
 int audio_pipeline_start(audio_pipeline_t *pipeline);
 
 /**
- * @brief Pause audio playback
- * @param pipeline audio pipeline
- * @return 0 on success, negative on error
- */
-int audio_pipeline_pause(audio_pipeline_t *pipeline);
-
-/**
- * @brief Flush audio buffers
- * Discards buffered audio and resets decoder.
- *
- * @param pipeline audio pipeline
- * @return 0 on success, negative on error
- */
-int audio_pipeline_flush(audio_pipeline_t *pipeline);
-
-/**
  * @brief Stop audio playback
- * Stops receiving RTP and releases resources.
+ * Clears buffered packets and their playback timeline. Sockets remain open for polling.
  *
  * @param pipeline audio pipeline
  * @return 0 on success, negative on error
@@ -139,13 +127,6 @@ int audio_pipeline_stop(audio_pipeline_t *pipeline);
  * @return 0 on success, negative on error
  */
 int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms);
-
-/**
- * @brief Get current pipeline state
- * @param pipeline audio pipeline
- * @return current state
- */
-audio_pipeline_state_t audio_pipeline_get_state(const audio_pipeline_t *pipeline);
 
 /**
  * @brief Set audio volume

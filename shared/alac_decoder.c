@@ -19,19 +19,19 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     memset(decoder, 0, sizeof(*decoder));
 
-    decoder->frame_length = frames_per_packet ? frames_per_packet : 352;
-    if (decoder->frame_length > 8192)
-        decoder->frame_length = 352;
+    decoder->frame_length = frames_per_packet ? frames_per_packet : AIRPLAY_DEFAULT_FRAMES_PER_PACKET;
+    if (decoder->frame_length > ALAC_MAX_SAMPLES_PER_FRAME)
+        return -1;
 
-    decoder->bit_depth = bit_depth ? bit_depth : 16;
+    decoder->bit_depth = bit_depth ? bit_depth : AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
     if (decoder->bit_depth != 16 && decoder->bit_depth != 24)
-        decoder->bit_depth = 16;
+        decoder->bit_depth = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
-    decoder->channels = channels ? channels : 2;
+    decoder->channels = channels ? channels : AIRPLAY_DEFAULT_CHANNELS;
     if (decoder->channels == 0 || decoder->channels > 2)
-        decoder->channels = 2;
+        decoder->channels = AIRPLAY_DEFAULT_CHANNELS;
 
-    decoder->sample_rate = sample_rate ? sample_rate : 44100;
+    decoder->sample_rate = sample_rate ? sample_rate : AIRPLAY_DEFAULT_SAMPLE_RATE;
 
     if (fmtp && fmtp_count > 0)
     {
@@ -102,14 +102,15 @@ int alac_decoder_decode_frame(alac_decoder_t *decoder,
 
     int output_bytes = (int)max_output_bytes;
 
-    alac_decode_frame(alac, (unsigned char *)input, output, &output_bytes);
+    *output_samples = 0;
+    alac_decode_frame(alac, input, input_len, output, &output_bytes);
 
     if (output_bytes <= 0)
         return -1;
 
     size_t samples = (size_t)output_bytes / sizeof(int16_t);
-    if (samples > max_output_samples)
-        samples = max_output_samples;
+    if (samples > max_output_samples || samples % decoder->channels != 0)
+        return -1;
 
     *output_samples = samples;
     return 0;

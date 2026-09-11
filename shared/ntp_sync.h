@@ -1,76 +1,35 @@
 #ifndef NTP_SYNC_H
 #define NTP_SYNC_H
-
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
-/**
- * @brief NTP-based timing synchronization for AirPlay audio
- * Handles timing packets to synchronize audio playback with sender
- */
-
-typedef struct ntp_sync ntp_sync_t;
-
-/**
- * @brief NTP timestamp (64-bit format: 32-bit seconds + 32-bit fraction)
- */
 typedef struct
 {
-    uint32_t seconds;
-    uint32_t fraction;
+    uint32_t seconds, fraction;
 } ntp_timestamp_t;
+/* One audio thread owns timing state. Offset is sender clock minus local clock. */
+typedef struct ntp_sync
+{
+    int64_t clock_offset_us, rtt_us;
+    uint32_t rtp_base, latency_frames;
+    ntp_timestamp_t ntp_base;
+    ntp_timestamp_t request_time;
+    uint64_t request_local_us, next_request_us, best_sample_us;
+    unsigned requests, samples;
+    int synchronized, anchor_valid, request_pending;
+} ntp_sync_t;
 
-/**
- * @brief Create NTP sync manager
- * @return sync instance, or NULL on error
- */
-ntp_sync_t *ntp_sync_create(void);
-
-/**
- * @brief Process NTP timing packet
- * Updates clock offset and RTT estimates
- *
- * @param sync NTP sync instance
- * @param data timing packet data
- * @param len packet length
- * @return 0 on success, negative on error
- */
-int ntp_sync_process_packet(ntp_sync_t *sync, const uint8_t *data, size_t len);
-
-/**
- * @brief Convert RTP timestamp to NTP time
- * @param sync NTP sync instance
- * @param rtp_timestamp RTP timestamp from packet
- * @param sample_rate audio sample rate (Hz)
- * @return NTP timestamp
- */
-ntp_timestamp_t ntp_sync_rtp_to_ntp(ntp_sync_t *sync, uint32_t rtp_timestamp, uint32_t sample_rate);
-
-/**
- * @brief Get current NTP time
- * @return current NTP timestamp
- */
+int ntp_sync_init(ntp_sync_t *sync);
 ntp_timestamp_t ntp_sync_now(void);
-
-/**
- * @brief Calculate time difference in microseconds
- * @param t1 first timestamp
- * @param t2 second timestamp
- * @return microseconds (t2 - t1)
- */
 int64_t ntp_sync_diff_us(ntp_timestamp_t t1, ntp_timestamp_t t2);
-
-/**
- * @brief Get clock offset between sender and receiver
- * @param sync NTP sync instance
- * @return offset in microseconds (positive = receiver ahead)
- */
+/* Produce a 32-byte RAOP timing request when due; 1 produced, 0 not due. */
+int ntp_sync_request(ntp_sync_t *sync, uint8_t packet[32]);
+int ntp_sync_process_packet(ntp_sync_t *sync, const uint8_t *data, size_t len);
+int ntp_sync_reply(const uint8_t *request, size_t len, uint8_t reply[32]);
+int ntp_sync_control(ntp_sync_t *sync, const uint8_t *data, size_t len, uint32_t rate);
+/* 0 only when both a timing exchange and a sync anchor are available. */
+int ntp_sync_deadline(ntp_sync_t *sync, uint32_t timestamp, uint32_t rate, uint64_t *local_us);
+ntp_timestamp_t ntp_sync_rtp_to_ntp(ntp_sync_t *sync, uint32_t timestamp, uint32_t rate);
 int64_t ntp_sync_get_offset_us(ntp_sync_t *sync);
-
-/**
- * @brief Close NTP sync
- * @param sync NTP sync instance
- */
-void ntp_sync_close(ntp_sync_t *sync);
-
-#endif // NTP_SYNC_H
+void ntp_sync_deinit(ntp_sync_t *sync);
+#endif

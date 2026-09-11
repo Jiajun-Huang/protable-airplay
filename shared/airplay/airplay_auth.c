@@ -1,7 +1,6 @@
 #include "airplay_auth.h"
 
 #include <string.h>
-#include <stdlib.h>
 
 #include <mbedtls/pk.h>
 #include <mbedtls/rsa.h>
@@ -34,35 +33,15 @@ static const char airport_private_key[] =
     "2gG0N5hvJpzwwhbhXqFKA4zaaSrw622wDniAK5MlIE0tIAKKP4yxNGjoD2QYjhBGuhvkWKY=\n"
     "-----END RSA PRIVATE KEY-----\0";
 
-static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
+static int base64_decode_padded(const char *str,
+                                uint8_t *out,
+                                size_t out_size,
+                                char *padded,
+                                size_t padded_size,
+                                size_t *out_len)
 {
-    if (!data || len == 0)
-        return NULL;
-
-    size_t encoded_len = 0;
-    if (mbedtls_base64_encode(NULL, 0, &encoded_len, data, len) != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
-        return NULL;
-
-    char *encoded = (char *)malloc(encoded_len + 1);
-    if (!encoded)
-        return NULL;
-
-    if (mbedtls_base64_encode((unsigned char *)encoded, encoded_len, &encoded_len, data, len) != 0)
-    {
-        free(encoded);
-        return NULL;
-    }
-
-    encoded[encoded_len] = '\0';
-    if (out_len)
-        *out_len = encoded_len;
-    return encoded;
-}
-
-static uint8_t *base64_decode(const char *str, size_t *out_len)
-{
-    if (!str)
-        return NULL;
+    if (!str || !out || !padded)
+        return -1;
 
     size_t input_len = strlen(str);
     size_t padded_len = input_len;
@@ -70,9 +49,8 @@ static uint8_t *base64_decode(const char *str, size_t *out_len)
     if (mod != 0)
         padded_len += (4 - mod);
 
-    char *padded = (char *)malloc(padded_len + 1);
-    if (!padded)
-        return NULL;
+    if (padded_size < padded_len + 1)
+        return -1;
 
     memcpy(padded, str, input_len);
     for (size_t i = input_len; i < padded_len; i++)
@@ -82,54 +60,46 @@ static uint8_t *base64_decode(const char *str, size_t *out_len)
     size_t decoded_len = 0;
     if (mbedtls_base64_decode(NULL, 0, &decoded_len,
                               (const unsigned char *)padded, padded_len) != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
-    {
-        free(padded);
-        return NULL;
-    }
+        return -1;
 
-    uint8_t *decoded = (uint8_t *)malloc(decoded_len + 1);
-    if (!decoded)
-    {
-        free(padded);
-        return NULL;
-    }
+    if (decoded_len > out_size)
+        return -1;
 
-    if (mbedtls_base64_decode(decoded, decoded_len, &decoded_len,
+    if (mbedtls_base64_decode(out, out_size, &decoded_len,
                               (const unsigned char *)padded, padded_len) != 0)
-    {
-        free(padded);
-        free(decoded);
-        return NULL;
-    }
+        return -1;
 
-    free(padded);
-    decoded[decoded_len] = '\0';
     if (out_len)
         *out_len = decoded_len;
-    return decoded;
+    return 0;
 }
 
 int apple_challenge_response(const char *challenge,
                              const uint8_t *ip_addr,
                              const uint8_t *mac_addr,
-                             char *response_out)
+                             char *response_out,
+                             size_t response_out_len,
+                             airplay_auth_scratch_t *scratch)
 {
-    if (!challenge || !ip_addr || !mac_addr || !response_out)
+    if (!challenge || !ip_addr || !mac_addr || !response_out || response_out_len == 0 || !scratch)
         return -1;
 
     size_t challenge_len = 0;
-    uint8_t *challenge_data = base64_decode(challenge, &challenge_len);
-    if (!challenge_data)
+    if (base64_decode_padded(challenge,
+                             scratch->decoded,
+                             sizeof(scratch->decoded),
+                             scratch->padded,
+                             sizeof(scratch->padded),
+                             &challenge_len) != 0)
         return -1;
 
     uint8_t message[48];
     memset(message, 0, sizeof(message));
 
     size_t copy_len = challenge_len > 16 ? 16 : challenge_len;
-    memcpy(message, challenge_data, copy_len);
+    memcpy(message, scratch->decoded, copy_len);
     memcpy(message + copy_len, ip_addr, 4);
     memcpy(message + copy_len + 4, mac_addr, 6);
-    free(challenge_data);
 
     size_t message_len = copy_len + 10;
     if (message_len < 32)
@@ -168,19 +138,33 @@ int apple_challenge_response(const char *challenge,
     if (ret != 0)
         goto cleanup;
 
-    char *encoded = base64_encode(signature, rsa->len, NULL);
-    if (!encoded)
+    size_t encoded_len = 0;
+    if (mbedtls_base64_encode(NULL, 0, &encoded_len, signature, rsa->len) != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
     {
         ret = -1;
         goto cleanup;
     }
 
-    char *padding = strchr(encoded, '=');
+    if (encoded_len + 1 > response_out_len)
+    {
+        ret = -1;
+        goto cleanup;
+    }
+
+    if (mbedtls_base64_encode((unsigned char *)response_out,
+                              response_out_len,
+                              &encoded_len,
+                              signature,
+                              rsa->len) != 0)
+    {
+        ret = -1;
+        goto cleanup;
+    }
+
+    response_out[encoded_len] = '\0';
+    char *padding = strchr(response_out, '=');
     if (padding)
         *padding = '\0';
-
-    strcpy(response_out, encoded);
-    free(encoded);
 
 cleanup:
     mbedtls_pk_free(&pk_ctx);
