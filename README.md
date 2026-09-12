@@ -4,7 +4,7 @@ A portable C AirPlay audio receiver for computers and embedded systems. It suppo
 
 ## System Overview
 
-![System architecture: a shared C core, three platform interfaces, and Windows, Apple, Linux, and embedded backends](docs/images/system-architecture.svg)
+![System architecture: AirPlay 1 and AirPlay 2 protocol paths share three services, one audio pipeline, and four platform backends](docs/images/system-architecture.svg)
 
 The shared core owns discovery, session control, decoding, and playback scheduling. Each platform provides networking, mutexes, time, and audio output, and starts three native threads or FreeRTOS tasks:
 
