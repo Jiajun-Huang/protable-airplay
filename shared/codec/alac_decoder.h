@@ -1,8 +1,11 @@
 #ifndef ALAC_DECODER_H
 #define ALAC_DECODER_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+
+/* Safe ALAC decoder adapter used by the audio pipeline. It validates negotiated
+ * limits and presents sample counts instead of the low-level byte-oriented API. */
 
 /**
  * @brief ALAC (Apple Lossless Audio Codec) decoder
@@ -39,7 +42,8 @@ typedef struct
  * @return 0 on success, -1 on error
  */
 int alac_decoder_init(alac_decoder_t *decoder,
-                      const uint32_t *fmtp, size_t fmtp_count,
+                      const uint32_t *fmtp,
+                      size_t fmtp_count,
                       uint32_t frames_per_packet,
                       uint8_t bit_depth,
                       uint8_t channels,
@@ -56,9 +60,13 @@ int alac_decoder_init(alac_decoder_t *decoder,
  * @return 0 on success, negative on error
  */
 int alac_decoder_decode_frame(alac_decoder_t *decoder,
-                              const uint8_t *input, size_t input_len,
-                              int16_t *output, size_t *output_samples, size_t max_output_samples);
+                              const uint8_t *input,
+                              size_t input_len,
+                              int16_t *output,
+                              size_t *output_samples,
+                              size_t max_output_samples);
 
+/* Release the low-level decoder context and reset negotiated state. */
 void alac_decoder_close(alac_decoder_t *decoder);
 
 #endif // ALAC_DECODER_H

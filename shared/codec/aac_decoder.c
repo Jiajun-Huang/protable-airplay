@@ -1,4 +1,4 @@
-#include "aac_decoder.h"
+#include "codec/aac_decoder.h"
 
 #include <limits.h>
 #include <string.h>
@@ -8,8 +8,10 @@
 #endif
 
 int aac_decoder_init(aac_decoder_t *decoder,
-                     const uint8_t *config, size_t config_len,
-                     uint8_t channels, uint32_t sample_rate)
+                     const uint8_t *config,
+                     size_t config_len,
+                     uint8_t channels,
+                     uint32_t sample_rate)
 {
     if (!decoder || !channels || channels > 2 || !sample_rate)
         return -1;
@@ -42,12 +44,14 @@ int aac_decoder_init(aac_decoder_t *decoder,
 }
 
 int aac_decoder_decode(aac_decoder_t *decoder,
-                       const uint8_t *input, size_t input_len,
-                       int16_t *output, size_t output_capacity_samples,
+                       const uint8_t *input,
+                       size_t input_len,
+                       int16_t *output,
+                       size_t output_capacity_samples,
                        size_t *output_samples)
 {
-    if (!decoder || !decoder->impl || !input || !input_len || !output ||
-        !output_samples || output_capacity_samples > (size_t)INT_MAX)
+    if (!decoder || !decoder->impl || !input || !input_len || !output || !output_samples ||
+        output_capacity_samples > (size_t)INT_MAX)
         return -1;
 
     *output_samples = 0;
@@ -59,8 +63,8 @@ int aac_decoder_decode(aac_decoder_t *decoder,
     if (aacDecoder_Fill(handle, buffers, buffer_sizes, &bytes_valid) != AAC_DEC_OK)
         return -1;
 
-    if (aacDecoder_DecodeFrame(handle, (INT_PCM *)output,
-                               (INT)output_capacity_samples, 0) != AAC_DEC_OK)
+    if (aacDecoder_DecodeFrame(handle, (INT_PCM *)output, (INT)output_capacity_samples, 0) !=
+        AAC_DEC_OK)
         return -1;
 
     CStreamInfo *info = aacDecoder_GetStreamInfo(handle);

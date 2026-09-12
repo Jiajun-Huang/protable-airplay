@@ -1,23 +1,27 @@
-#include "rtsp.h"
 #include "airplay/airplay2.h"
-#include "bplist.h"
+#include "protocol/bplist.h"
+#include "protocol/rtsp.h"
 
-#include "log.h"
+#include "util/log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define CHECK(condition) do { \
-    if (!(condition)) { \
-        LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #condition); \
-        exit(1); \
-    } \
-} while (0)
+#define CHECK(condition)                                                                           \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(condition))                                                                          \
+        {                                                                                          \
+            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #condition);                      \
+            exit(1);                                                                               \
+        }                                                                                          \
+    } while (0)
 
-#define FAKE_CLIENTS (RTSP_MAX_CLIENTS + 4)
+#define FAKE_CLIENTS    (RTSP_MAX_CLIENTS + 4)
 #define LISTENER_HANDLE 1000
 
-typedef struct {
+typedef struct
+{
     uint8_t input[RTSP_RX_BUFFER_SIZE + 1024];
     size_t input_length;
     char output[16384];
@@ -78,14 +82,15 @@ int net_tcp_listen(net_socket_t *socket, const char *ip, uint16_t port)
     return 0;
 }
 
-int net_tcp_accept(net_socket_t *listener, net_socket_t *client,
-                    net_addr_t *peer, int timeout_ms)
+int net_tcp_accept(net_socket_t *listener, net_socket_t *client, net_addr_t *peer, int timeout_ms)
 {
     CHECK(listener->handle == LISTENER_HANDLE);
     CHECK(timeout_ms == 0);
     CHECK(mutex_depth == 0);
-    for (int i = 0; i < client_count; ++i) {
-        if (clients[i].pending_accept) {
+    for (int i = 0; i < client_count; ++i)
+    {
+        if (clients[i].pending_accept)
+        {
             clients[i].pending_accept = 0;
             client->handle = (uintptr_t)i + 1;
             client->port = 5000;
@@ -105,19 +110,23 @@ int net_wait(const net_socket_t *sockets, size_t count, uint8_t *ready, int time
     if (wait_error)
         return NET_ERROR;
     memset(ready, 0, count);
-    for (size_t i = 0; i < count; ++i) {
+    for (size_t i = 0; i < count; ++i)
+    {
         if (sockets[i].handle == UINTPTR_MAX)
             continue;
-        if (sockets[i].handle == LISTENER_HANDLE) {
+        if (sockets[i].handle == LISTENER_HANDLE)
+        {
             for (int j = 0; j < client_count; ++j)
                 if (clients[j].pending_accept)
                     ready[i] = 1;
-        } else {
+        }
+        else
+        {
             CHECK(sockets[i].handle >= 1 && sockets[i].handle <= FAKE_CLIENTS);
             fake_client_t *client = &clients[sockets[i].handle - 1];
             CHECK(!client->closed);
-            ready[i] = client->input_length || client->eof ||
-                       client->recv_error || client->recv_timeout;
+            ready[i] =
+                client->input_length || client->eof || client->recv_error || client->recv_timeout;
         }
         result += ready[i];
     }
@@ -131,7 +140,8 @@ int net_tcp_recv(net_socket_t *socket, void *data, size_t capacity, int timeout_
     CHECK(mutex_depth == 0);
     CHECK(timeout_ms == 0);
     CHECK(capacity > 0);
-    if (client->recv_timeout) {
+    if (client->recv_timeout)
+    {
         client->recv_timeout = 0;
         return NET_TIMEOUT;
     }
@@ -203,13 +213,21 @@ static void append_text(int client, const char *text)
     append(client, text, strlen(text));
 }
 
-static void queue_request(int client, const char *method, unsigned cseq,
-                           const char *headers, const void *body, size_t body_length)
+static void queue_request(int client,
+                          const char *method,
+                          unsigned cseq,
+                          const char *headers,
+                          const void *body,
+                          size_t body_length)
 {
     char request[1024];
-    int length = snprintf(request, sizeof(request),
-        "%s * RTSP/1.0\r\nCSeq: %u\r\n%sContent-Length: %zu\r\n\r\n",
-        method, cseq, headers ? headers : "", body_length);
+    int length = snprintf(request,
+                          sizeof(request),
+                          "%s * RTSP/1.0\r\nCSeq: %u\r\n%sContent-Length: %zu\r\n\r\n",
+                          method,
+                          cseq,
+                          headers ? headers : "",
+                          body_length);
     CHECK(length > 0 && (size_t)length < sizeof(request));
     append(client, request, (size_t)length);
     if (body_length)
@@ -240,7 +258,8 @@ static void announce(int client)
 static int occurrences(const char *text, const char *needle)
 {
     int count = 0;
-    while ((text = strstr(text, needle)) != NULL) {
+    while ((text = strstr(text, needle)) != NULL)
+    {
         ++count;
         text += strlen(needle);
     }
@@ -272,8 +291,10 @@ static void test_fragmented_body_then_record(void)
     size_t split = strlen(sdp) / 2;
     fixture();
     int client = connect_client();
-    snprintf(header, sizeof(header),
-             "ANNOUNCE * RTSP/1.0\r\nCSeq: 31\r\nContent-Length: %zu\r\n\r\n", strlen(sdp));
+    snprintf(header,
+             sizeof(header),
+             "ANNOUNCE * RTSP/1.0\r\nCSeq: 31\r\nContent-Length: %zu\r\n\r\n",
+             strlen(sdp));
     append_text(client, header);
     append(client, sdp, split);
     CHECK(rtsp_server_poll(&server, 0) == 0);
@@ -382,7 +403,8 @@ static void test_timeout_and_failures(void)
     CHECK(clients[client].closed);
     rtsp_server_close(&server);
 
-    for (int error = NET_ERROR; error >= NET_TIMEOUT; --error) {
+    for (int error = NET_ERROR; error >= NET_TIMEOUT; --error)
+    {
         fixture();
         client = connect_client();
         announce(client);
@@ -402,15 +424,16 @@ static void test_timeout_and_failures(void)
 
 static void test_malformed_lengths_and_headers(void)
 {
-    const char *bad[] = {
-        "-1", "+1", "4294967296", "abc", "12junk", ""
-    };
+    const char *bad[] = {"-1", "+1", "4294967296", "abc", "12junk", ""};
     char request_text[256];
-    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i)
+    {
         fixture();
         int client = connect_client();
-        snprintf(request_text, sizeof(request_text),
-                 "SET_PARAMETER * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: %s\r\n\r\n", bad[i]);
+        snprintf(request_text,
+                 sizeof(request_text),
+                 "SET_PARAMETER * RTSP/1.0\r\nCSeq: 1\r\nContent-Length: %s\r\n\r\n",
+                 bad[i]);
         append_text(client, request_text);
         CHECK(rtsp_server_poll(&server, 0) == 0);
         CHECK(clients[client].closed);
@@ -420,8 +443,10 @@ static void test_malformed_lengths_and_headers(void)
 
     fixture();
     int client = connect_client();
-    snprintf(request_text, sizeof(request_text),
-             "SET_PARAMETER * RTSP/1.0\r\nContent-Length: %u\r\n\r\n", (unsigned)RTSP_RX_BUFFER_SIZE);
+    snprintf(request_text,
+             sizeof(request_text),
+             "SET_PARAMETER * RTSP/1.0\r\nContent-Length: %u\r\n\r\n",
+             (unsigned)RTSP_RX_BUFFER_SIZE);
     append_text(client, request_text);
     CHECK(rtsp_server_poll(&server, 0) == 0);
     CHECK(clients[client].closed);
@@ -448,18 +473,26 @@ static void test_volume_and_large_artwork(void)
     fixture();
     int client = connect_client();
     const char *volume = "volume: -8.5\r\n";
-    queue_request(client, "SET_PARAMETER", 1, "Content-Type: text/parameters\r\n", volume, strlen(volume));
+    queue_request(
+        client, "SET_PARAMETER", 1, "Content-Type: text/parameters\r\n", volume, strlen(volume));
     CHECK(rtsp_server_poll(&server, 0) == 0);
     CHECK(state().volume_db == -8.5f);
     const char *nan_volume = "volume: nan\r\n";
-    queue_request(client, "SET_PARAMETER", 2, "Content-Type: text/parameters\r\n", nan_volume, strlen(nan_volume));
+    queue_request(client,
+                  "SET_PARAMETER",
+                  2,
+                  "Content-Type: text/parameters\r\n",
+                  nan_volume,
+                  strlen(nan_volume));
     CHECK(rtsp_server_poll(&server, 0) == 0);
     CHECK(state().volume_db == -8.5f);
 
     char header[256];
     size_t artwork_length = RTSP_RX_BUFFER_SIZE - 512;
-    snprintf(header, sizeof(header),
-             "SET_PARAMETER * RTSP/1.0\r\nCSeq: 3\r\nContent-Type: image/jpeg\r\nContent-Length: %zu\r\n\r\n",
+    snprintf(header,
+             sizeof(header),
+             "SET_PARAMETER * RTSP/1.0\r\nCSeq: 3\r\nContent-Type: image/jpeg\r\nContent-Length: "
+             "%zu\r\n\r\n",
              artwork_length);
     append_text(client, header);
     size_t body_start = clients[client].input_length;
@@ -498,14 +531,20 @@ static void test_transport_and_timestamp_boundaries(void)
     int client = connect_client();
     announce(client);
     unsigned generation = state().generation;
-    queue_request(client, "SETUP", 11,
-        "Transport: RTP/AVP/UDP;unicast;mode=record;control_port=55000;timing_port=55001\r\n", NULL, 0);
+    queue_request(
+        client,
+        "SETUP",
+        11,
+        "Transport: RTP/AVP/UDP;unicast;mode=record;control_port=55000;timing_port=55001\r\n",
+        NULL,
+        0);
     CHECK(rtsp_server_poll(&server, 0) == 0);
     CHECK(state().timing_peer.port == 55001 && state().generation == generation + 1);
     CHECK(strcmp(state().timing_peer.ip, "192.0.2.20") == 0);
     queue_request(client, "RECORD", 12, "RTP-Info: seq=65535;rtptime=4294967295\r\n", NULL, 0);
     CHECK(rtsp_server_poll(&server, 0) == 0);
-    CHECK(state().recording && state().has_timestamp_floor && state().timestamp_floor == UINT32_MAX);
+    CHECK(state().recording && state().has_timestamp_floor &&
+          state().timestamp_floor == UINT32_MAX);
     CHECK(!state().floor_exclusive);
     queue_request(client, "FLUSH", 13, "RTP-Info: seq=0;rtptime=0\r\n", NULL, 0);
     CHECK(rtsp_server_poll(&server, 0) == 0);
@@ -524,7 +563,7 @@ static void test_fairplay_dispatch_and_reconnect(void)
 {
     fixture();
     int client = connect_client();
-    const uint8_t first[16] = {'F','P','L','Y',3,1,1,0,0,0,0,4,2,0,0,0};
+    const uint8_t first[16] = {'F', 'P', 'L', 'Y', 3, 1, 1, 0, 0, 0, 0, 4, 2, 0, 0, 0};
     append_text(client, "POST /fp-setup RTSP/1.0\r\nCSeq: 1\r\nContent-Length: 16\r\n\r\n");
     append(client, first, 8);
     CHECK(rtsp_server_poll(&server, 0) == 0 && !clients[client].output_length);
@@ -537,7 +576,7 @@ static void test_fairplay_dispatch_and_reconnect(void)
     CHECK(rtsp_server_poll(&server, 0) == 0 && clients[client].closed);
     CHECK(server.clients[0].fairplay_stage == 0);
     client = connect_client();
-    const uint8_t second[164] = {'F','P','L','Y',3,1,3,0,0,0,0,152};
+    const uint8_t second[164] = {'F', 'P', 'L', 'Y', 3, 1, 3, 0, 0, 0, 0, 152};
     append_text(client, "POST /fp-setup RTSP/1.0\r\nCSeq: 2\r\nContent-Length: 164\r\n\r\n");
     append(client, second, sizeof(second));
     CHECK(rtsp_server_poll(&server, 0) == 0);
@@ -557,16 +596,20 @@ static void test_buffered_flush_timebase(void)
     server.stream.has_session = server.stream.recording = 1;
     server.stream.session.stream_type = 103;
     server.stream.has_timestamp_floor = 1;
-    uint8_t body[256]; bplist_writer_t w;
+    uint8_t body[256];
+    bplist_writer_t w;
     bplist_writer_init(&w, body, sizeof(body));
-    uint32_t refs[] = {bplist_add_string(&w, "flushUntilTS"), bplist_add_uint(&w, 3949349609U),
-        bplist_add_string(&w, "flushUntilSeq"), bplist_add_uint(&w, 0x12ffff)};
+    uint32_t refs[] = {bplist_add_string(&w, "flushUntilTS"),
+                       bplist_add_uint(&w, 3949349609U),
+                       bplist_add_string(&w, "flushUntilSeq"),
+                       bplist_add_uint(&w, 0x12ffff)};
     size_t size = bplist_finish(&w, bplist_add_dict(&w, refs, 2));
     rtsp_request_t request = {.method = RTSP_METHOD_FLUSHBUFFERED, .body = body, .body_len = size};
     int handled;
     CHECK(size && !airplay2_handle(&server, client, &request, &handled) && handled);
     CHECK(!server.stream.has_timestamp_floor);
-    CHECK(server.stream.has_buffered_flush_sequence && server.stream.buffered_flush_sequence == 0x12ffff);
+    CHECK(server.stream.has_buffered_flush_sequence &&
+          server.stream.buffered_flush_sequence == 0x12ffff);
     CHECK(server.stream.flush_generation == 1);
     rtsp_server_close(&server);
 }
@@ -575,7 +618,8 @@ int main(void)
 {
     test_fragmented_headers_and_pipeline();
     test_fragmented_body_then_record();
-    if (RTSP_MAX_CLIENTS >= 2) {
+    if (RTSP_MAX_CLIENTS >= 2)
+    {
         test_session_owner_and_controls();
         test_new_announce_changes_owner();
     }

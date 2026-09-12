@@ -1,9 +1,9 @@
-#include "sdp.h"
-#include "log.h"
+#include "protocol/sdp.h"
+#include "util/log.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 static void to_lower_ascii(char *s)
 {
@@ -17,7 +17,8 @@ static void to_lower_ascii(char *s)
 }
 
 // Base64 decode table
-static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char base64_chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 static int parse_hex_bytes(const char *text, uint8_t *output, size_t capacity)
 {
@@ -160,14 +161,10 @@ int sdp_parse(const uint8_t *sdp_data,
             {
                 char codec_name[64];
                 unsigned int rate, channels;
-                int fields = sscanf(value + 7, "%*d %63[^/]/%u/%u",
-                                    codec_name,
-                                    &rate, &channels);
+                int fields = sscanf(value + 7, "%*d %63[^/]/%u/%u", codec_name, &rate, &channels);
                 if (fields < 2)
                 {
-                    fields = sscanf(value + 7, "%*d %63[^/]/%u",
-                                    codec_name,
-                                    &rate);
+                    fields = sscanf(value + 7, "%*d %63[^/]/%u", codec_name, &rate);
                 }
 
                 if (fields >= 2)
@@ -181,7 +178,8 @@ int sdp_parse(const uint8_t *sdp_data,
                         if (fields >= 3)
                             session->channels = (uint16_t)channels;
                     }
-                    else if (strstr(codec_name, "aac") || strstr(codec_name, "mpeg4-generic") || strstr(codec_name, "mp4a"))
+                    else if (strstr(codec_name, "aac") || strstr(codec_name, "mpeg4-generic") ||
+                             strstr(codec_name, "mp4a"))
                     {
                         session->codec = SDP_CODEC_AAC;
                         session->sample_rate = rate;
@@ -218,21 +216,34 @@ int sdp_parse(const uint8_t *sdp_data,
                         const char *index_delta = strstr(params, "indexdeltalength=");
                         if (config)
                         {
-                            int config_len = parse_hex_bytes(config + 7,
-                                                             session->aac_config,
-                                                             sizeof(session->aac_config));
+                            int config_len = parse_hex_bytes(
+                                config + 7, session->aac_config, sizeof(session->aac_config));
                             session->aac_config_len = config_len > 0 ? (size_t)config_len : 0;
                         }
-                        session->aac_size_length = size_length ? (uint8_t)atoi(size_length + strlen("sizelength=")) : 13;
-                        session->aac_index_length = index_length ? (uint8_t)atoi(index_length + strlen("indexlength=")) : 3;
-                        session->aac_index_delta_length = index_delta ? (uint8_t)atoi(index_delta + strlen("indexdeltalength=")) : 3;
+                        session->aac_size_length =
+                            size_length ? (uint8_t)atoi(size_length + strlen("sizelength=")) : 13;
+                        session->aac_index_length =
+                            index_length ? (uint8_t)atoi(index_length + strlen("indexlength=")) : 3;
+                        session->aac_index_delta_length =
+                            index_delta ? (uint8_t)atoi(index_delta + strlen("indexdeltalength="))
+                                        : 3;
                         break;
                     }
                     // Parse ALAC configuration
                     unsigned int vals[12];
-                    int count = sscanf(params, "%u %u %u %u %u %u %u %u %u %u %u",
-                                       &vals[0], &vals[1], &vals[2], &vals[3], &vals[4],
-                                       &vals[5], &vals[6], &vals[7], &vals[8], &vals[9], &vals[10]);
+                    int count = sscanf(params,
+                                       "%u %u %u %u %u %u %u %u %u %u %u",
+                                       &vals[0],
+                                       &vals[1],
+                                       &vals[2],
+                                       &vals[3],
+                                       &vals[4],
+                                       &vals[5],
+                                       &vals[6],
+                                       &vals[7],
+                                       &vals[8],
+                                       &vals[9],
+                                       &vals[10]);
                     if (count >= 3)
                     {
                         session->alac_fmtp_count = (size_t)count;
@@ -251,9 +262,8 @@ int sdp_parse(const uint8_t *sdp_data,
             // a=rsaaeskey:base64_key
             else if (strncmp(value, "rsaaeskey:", 10) == 0)
             {
-                int key_len = sdp_base64_decode(value + 10,
-                                                session->aes_key_encrypted,
-                                                sizeof(session->aes_key_encrypted));
+                int key_len = sdp_base64_decode(
+                    value + 10, session->aes_key_encrypted, sizeof(session->aes_key_encrypted));
                 if (key_len > 0)
                     session->aes_key_encrypted_len = (size_t)key_len;
                 session->has_encryption = 1;
@@ -301,9 +311,13 @@ int sdp_parse(const uint8_t *sdp_data,
     if (session->bits_per_sample != 16 && session->bits_per_sample != 24)
         session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
-    LOG_DEBUG("sdp", "Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
-              session->codec, session->sample_rate, session->channels,
-              session->bits_per_sample, session->frames_per_packet);
+    LOG_DEBUG("sdp",
+              "Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
+              session->codec,
+              session->sample_rate,
+              session->channels,
+              session->bits_per_sample,
+              session->frames_per_packet);
 
     return 0;
 }

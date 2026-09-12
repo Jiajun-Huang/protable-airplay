@@ -1,11 +1,11 @@
-#include "mdns.h"
-#include "network_util.h"
+#include "protocol/mdns.h"
+#include "util/network_util.h"
 
 #include <stdio.h>
 #include <string.h>
 
 #define DNS_HEADER_SIZE 12
-#define DNS_RR_SIZE 10
+#define DNS_RR_SIZE     10
 
 static void write_u16(uint8_t *data, uint16_t value)
 {
@@ -50,8 +50,12 @@ static int write_name(const char *name, uint8_t *buffer, size_t capacity, size_t
     return 1;
 }
 
-static uint8_t *begin_record(uint8_t *buffer, size_t capacity, size_t *position,
-                             uint16_t type, uint16_t record_class, uint32_t ttl)
+static uint8_t *begin_record(uint8_t *buffer,
+                             size_t capacity,
+                             size_t *position,
+                             uint16_t type,
+                             uint16_t record_class,
+                             uint32_t ttl)
 {
     uint8_t *record;
     if (*position + DNS_RR_SIZE > capacity)
@@ -65,8 +69,10 @@ static uint8_t *begin_record(uint8_t *buffer, size_t capacity, size_t *position,
     return record;
 }
 
-static size_t build_packet(const mdns_instance_t *instance, uint8_t *buffer,
-                           size_t capacity, uint32_t ttl)
+static size_t build_packet(const mdns_instance_t *instance,
+                           uint8_t *buffer,
+                           size_t capacity,
+                           uint32_t ttl)
 {
     const mdns_config_t *config = &instance->config;
     char full_name[256];
@@ -79,7 +85,8 @@ static size_t build_packet(const mdns_instance_t *instance, uint8_t *buffer,
         return 0;
     memset(buffer, 0, DNS_HEADER_SIZE);
     write_u16(buffer + 2, 0x8400);
-    name_length = snprintf(full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
+    name_length = snprintf(
+        full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
     if (name_length < 0 || (size_t)name_length >= sizeof(full_name))
         return 0;
 
@@ -142,8 +149,8 @@ static size_t build_packet(const mdns_instance_t *instance, uint8_t *buffer,
     return position;
 }
 
-static size_t decode_name(const uint8_t *data, size_t length, size_t offset,
-                          char *name, size_t capacity)
+static size_t decode_name(
+    const uint8_t *data, size_t length, size_t offset, char *name, size_t capacity)
 {
     size_t position = offset, next = 0, used = 0, steps;
     for (steps = 0; steps < length; steps++)
@@ -185,7 +192,8 @@ static size_t decode_name(const uint8_t *data, size_t length, size_t offset,
 static int name_matches(const mdns_config_t *config, const char *name)
 {
     char full_name[256];
-    int length = snprintf(full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
+    int length = snprintf(
+        full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
     if (length < 0 || (size_t)length >= sizeof(full_name))
         return 0;
     return net_ascii_casecmp(name, config->service_type) == 0 ||
@@ -193,7 +201,9 @@ static int name_matches(const mdns_config_t *config, const char *name)
            net_ascii_casecmp(name, config->hostname) == 0;
 }
 
-static mdns_error_t send_response(mdns_instance_t *instance, const net_addr_t *destination, uint32_t ttl)
+static mdns_error_t send_response(mdns_instance_t *instance,
+                                  const net_addr_t *destination,
+                                  uint32_t ttl)
 {
     uint8_t packet[1500];
     size_t length;
@@ -207,10 +217,12 @@ static mdns_error_t send_response(mdns_instance_t *instance, const net_addr_t *d
     return sent == (int)length ? MDNS_OK : MDNS_ERR_SOCKET_ERROR;
 }
 
-mdns_error_t mdns_create(mdns_instance_t *instance, const mdns_config_t *config, net_socket_t *socket)
+mdns_error_t mdns_create(mdns_instance_t *instance,
+                         const mdns_config_t *config,
+                         net_socket_t *socket)
 {
-    if (!instance || !config || !socket || !config->service_type ||
-        !config->instance_name || !config->hostname || (config->txt_count && !config->txt_entries))
+    if (!instance || !config || !socket || !config->service_type || !config->instance_name ||
+        !config->hostname || (config->txt_count && !config->txt_entries))
         return MDNS_ERR_INVALID_ARGS;
     instance->config = *config;
     instance->socket = socket;
@@ -229,8 +241,10 @@ mdns_error_t mdns_goodbye(mdns_instance_t *instance)
     return send_response(instance, &destination, 0);
 }
 
-mdns_error_t mdns_handle_packet_from(mdns_instance_t *instance, const uint8_t *data,
-                                     size_t length, const net_addr_t *source)
+mdns_error_t mdns_handle_packet_from(mdns_instance_t *instance,
+                                     const uint8_t *data,
+                                     size_t length,
+                                     const net_addr_t *source)
 {
     uint16_t questions, i;
     size_t position = DNS_HEADER_SIZE;

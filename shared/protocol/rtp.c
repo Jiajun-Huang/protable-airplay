@@ -1,4 +1,4 @@
-#include "rtp.h"
+#include "protocol/rtp.h"
 
 #include <string.h>
 int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet)
@@ -26,14 +26,10 @@ int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet)
     packet->header.marker = (uint8_t)((data[1] >> 7) & 0x01);
     packet->header.payload_type = (uint8_t)(data[1] & 0x7F);
     packet->header.sequence = (uint16_t)(((uint16_t)data[2] << 8) | data[3]);
-    packet->header.timestamp = ((uint32_t)data[4] << 24) |
-                               ((uint32_t)data[5] << 16) |
-                               ((uint32_t)data[6] << 8) |
-                               (uint32_t)data[7];
-    packet->header.ssrc = ((uint32_t)data[8] << 24) |
-                          ((uint32_t)data[9] << 16) |
-                          ((uint32_t)data[10] << 8) |
-                          (uint32_t)data[11];
+    packet->header.timestamp = ((uint32_t)data[4] << 24) | ((uint32_t)data[5] << 16) |
+                               ((uint32_t)data[6] << 8) | (uint32_t)data[7];
+    packet->header.ssrc = ((uint32_t)data[8] << 24) | ((uint32_t)data[9] << 16) |
+                          ((uint32_t)data[10] << 8) | (uint32_t)data[11];
 
     if (packet->header.version != 2)
         return -1;
@@ -82,7 +78,8 @@ int rtp_receiver_create(rtp_receiver_t *receiver, const rtp_receiver_config_t *c
     receiver->timing_socket = (net_socket_t)NET_SOCKET_INIT;
     receiver->config = *config;
     if ((config->audio_port && net_udp_bind(&receiver->audio_socket, config->audio_port) != 0) ||
-        (config->control_port && net_udp_bind(&receiver->control_socket, config->control_port) != 0) ||
+        (config->control_port &&
+         net_udp_bind(&receiver->control_socket, config->control_port) != 0) ||
         (config->timing_port && net_udp_bind(&receiver->timing_socket, config->timing_port) != 0))
     {
         rtp_receiver_close(receiver);
@@ -133,7 +130,8 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
             {
                 rtp_packet_t packet;
                 receiver->audio_packet_count++;
-                if (rtp_parse_packet(buffers[i], (size_t)length, &packet) == 0 && receiver->config.audio_cb)
+                if (rtp_parse_packet(buffers[i], (size_t)length, &packet) == 0 &&
+                    receiver->config.audio_cb)
                     receiver->config.audio_cb(&packet, receiver->config.user_data);
             }
             else if (i == 1 && receiver->config.control_cb)
@@ -142,7 +140,8 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
             }
             else if (i == 2 && receiver->config.timing_cb)
             {
-                receiver->config.timing_cb(buffers[i], (size_t)length, &peer, receiver->config.user_data);
+                receiver->config.timing_cb(
+                    buffers[i], (size_t)length, &peer, receiver->config.user_data);
             }
         }
     }

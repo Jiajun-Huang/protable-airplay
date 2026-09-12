@@ -1,4 +1,4 @@
-#include "playout.h"
+#include "audio/playout.h"
 #include <string.h>
 
 void playout_reset(playout_t *queue)
@@ -58,9 +58,9 @@ playout_packet_t *playout_peek(playout_t *queue)
     for (unsigned i = 0; i < AIRPLAY_PLAYOUT_PACKETS; ++i)
     {
         playout_packet_t *slot = &queue->packets[i];
-        if (slot->valid && (!first ||
-                            (uint16_t)(slot->header.sequence - queue->next_sequence) <
-                                (uint16_t)(first->header.sequence - queue->next_sequence)))
+        if (slot->valid &&
+            (!first || (uint16_t)(slot->header.sequence - queue->next_sequence) <
+                           (uint16_t)(first->header.sequence - queue->next_sequence)))
             first = slot;
     }
     return first;

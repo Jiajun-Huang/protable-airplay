@@ -1,17 +1,21 @@
 #ifndef AUDIO_PIPELINE_H
 #define AUDIO_PIPELINE_H
 
-#include <stdint.h>
+#include "audio/buffered_audio.h"
+#include "audio/playout.h"
+#include "codec/aac_decoder.h"
+#include "codec/alac_decoder.h"
+#include "crypto/crypto.h"
+#include "protocol/rtp.h"
+#include "protocol/sdp.h"
+#include "sync/ntp_sync.h"
+#include "sync/ptp_sync.h"
 #include <stddef.h>
-#include "rtp.h"
-#include "sdp.h"
-#include "alac_decoder.h"
-#include "aac_decoder.h"
-#include "crypto.h"
-#include "ntp_sync.h"
-#include "playout.h"
-#include "ptp_sync.h"
-#include "buffered_audio.h"
+#include <stdint.h>
+
+/* Shared audio data path. It receives realtime or buffered packets, authenticates
+ * and orders
+ * them, maps sender time to local deadlines, decodes them, and emits PCM. */
 
 /**
  * @brief Audio pipeline state
@@ -106,7 +110,9 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
  * @return 0 on success, negative on error
  */
 int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *session);
+/* Reset the sender endpoint used by buffered audio and RAOP timing exchanges. */
 void audio_pipeline_set_transport(audio_pipeline_t *pipeline, const net_addr_t *timing_peer);
+/* Reject packets before the RECORD or FLUSH RTP timestamp boundary. */
 void audio_pipeline_set_start(audio_pipeline_t *pipeline, uint32_t timestamp, int exclusive);
 
 /**

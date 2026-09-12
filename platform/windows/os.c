@@ -1,7 +1,7 @@
 #include "os.h"
 
-#include <windows.h>
 #include <stdlib.h>
+#include <windows.h>
 
 int os_mutex_init(os_mutex_t *mutex)
 {

@@ -1,4 +1,4 @@
-#include "network_util.h"
+#include "util/network_util.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -36,8 +36,7 @@ int net_ipv4_to_str(uint32_t address, char *text, size_t capacity)
     if (!text || capacity < 16)
         return -1;
     memcpy(bytes, &address, sizeof(bytes));
-    length = snprintf(text, capacity, "%u.%u.%u.%u",
-                      bytes[0], bytes[1], bytes[2], bytes[3]);
+    length = snprintf(text, capacity, "%u.%u.%u.%u", bytes[0], bytes[1], bytes[2], bytes[3]);
     return length > 0 && (size_t)length < capacity ? 0 : -1;
 }
 

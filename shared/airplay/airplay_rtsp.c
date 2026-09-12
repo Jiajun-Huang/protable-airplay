@@ -1,7 +1,7 @@
 #include "airplay_rtsp.h"
 #include "airplay_auth.h"
-#include "network_util.h"
-#include "log.h"
+#include "util/log.h"
+#include "util/network_util.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -58,9 +58,14 @@ static int parse_mac_hex(const char *hex, uint8_t mac[6])
 {
     unsigned values[6];
     size_t i;
-    if (strlen(hex) != 12 ||
-        sscanf(hex, "%2x%2x%2x%2x%2x%2x", &values[0], &values[1], &values[2],
-               &values[3], &values[4], &values[5]) != 6)
+    if (strlen(hex) != 12 || sscanf(hex,
+                                    "%2x%2x%2x%2x%2x%2x",
+                                    &values[0],
+                                    &values[1],
+                                    &values[2],
+                                    &values[3],
+                                    &values[4],
+                                    &values[5]) != 6)
         return -1;
     for (i = 0; i < 6; ++i)
         mac[i] = (uint8_t)values[i];
@@ -69,35 +74,49 @@ static int parse_mac_hex(const char *hex, uint8_t mac[6])
 
 static int parameter_u32(const char *text, const char *key, uint32_t *out)
 {
-    if (!text) return 0;
+    if (!text)
+        return 0;
     size_t key_length = strlen(key);
     const char *p = text;
-    while ((p = strstr(p, key)) != NULL) {
-        if (p != text && p[-1] != ';' && p[-1] != ',' && p[-1] != ' ') { ++p; continue; }
+    while ((p = strstr(p, key)) != NULL)
+    {
+        if (p != text && p[-1] != ';' && p[-1] != ',' && p[-1] != ' ')
+        {
+            ++p;
+            continue;
+        }
         p += key_length;
-        if (*p != '=') continue;
+        if (*p != '=')
+            continue;
         ++p;
-        if (*p < '0' || *p > '9') return -1;
+        if (*p < '0' || *p > '9')
+            return -1;
         uint32_t value = 0;
-        while (*p >= '0' && *p <= '9') {
+        while (*p >= '0' && *p <= '9')
+        {
             unsigned digit = (unsigned)(*p++ - '0');
-            if (value > (UINT32_MAX - digit) / 10) return -1;
+            if (value > (UINT32_MAX - digit) / 10)
+                return -1;
             value = value * 10 + digit;
         }
-        if (*p && *p != ';' && *p != ',' && *p != ' ') return -1;
+        if (*p && *p != ';' && *p != ',' && *p != ' ')
+            return -1;
         *out = value;
         return 1;
     }
     return 0;
 }
 
-int airplay_rtsp_options(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_options(rtsp_instance_t *instance,
+                         rtsp_client_t *client,
                          const rtsp_request_t *request)
 {
     char extra_headers[768];
     const char *challenge = get_header_value(request, "Apple-Challenge");
-    snprintf(extra_headers, sizeof(extra_headers),
-             "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, FLUSHBUFFERED, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET, SETPEERS, SETRATEANCHORTIME\r\n");
+    snprintf(extra_headers,
+             sizeof(extra_headers),
+             "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, FLUSHBUFFERED, TEARDOWN, OPTIONS, "
+             "GET_PARAMETER, SET_PARAMETER, POST, GET, SETPEERS, SETRATEANCHORTIME\r\n");
     if (challenge && *challenge)
     {
         char local_ip[16], local_mac_hex[13];
@@ -112,12 +131,14 @@ int airplay_rtsp_options(rtsp_instance_t *instance, rtsp_client_t *client,
             char response[384];
             airplay_auth_scratch_t scratch;
             memcpy(ip_bytes, &ip, sizeof(ip_bytes));
-            if (apple_challenge_response(challenge, ip_bytes, mac, response,
-                                         sizeof(response), &scratch) == 0)
+            if (apple_challenge_response(
+                    challenge, ip_bytes, mac, response, sizeof(response), &scratch) == 0)
             {
                 size_t length = strlen(extra_headers);
-                snprintf(extra_headers + length, sizeof(extra_headers) - length,
-                         "Apple-Response: %s\r\n", response);
+                snprintf(extra_headers + length,
+                         sizeof(extra_headers) - length,
+                         "Apple-Response: %s\r\n",
+                         response);
             }
             else
                 LOG_ERROR("RTSP", "Failed to generate Apple-Response\n");
@@ -126,14 +147,16 @@ int airplay_rtsp_options(rtsp_instance_t *instance, rtsp_client_t *client,
     return rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
 }
 
-int airplay_rtsp_describe(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_describe(rtsp_instance_t *instance,
+                          rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     (void)instance;
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_announce(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_announce(rtsp_instance_t *instance,
+                          rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     sdp_session_t parsed;
@@ -152,28 +175,37 @@ int airplay_rtsp_announce(rtsp_instance_t *instance, rtsp_client_t *client,
     ++instance->stream.generation;
     instance->stream_owner = client;
     os_mutex_unlock(&instance->state_lock);
-    LOG_INFO("RTSP", "ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
-                  parsed.codec, parsed.sample_rate, parsed.channels, parsed.bits_per_sample);
+    LOG_INFO("RTSP",
+             "ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
+             parsed.codec,
+             parsed.sample_rate,
+             parsed.channels,
+             parsed.bits_per_sample);
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_post(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_post(rtsp_instance_t *instance,
+                      rtsp_client_t *client,
                       const rtsp_request_t *request)
 {
     (void)instance;
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_setup(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_setup(rtsp_instance_t *instance,
+                       rtsp_client_t *client,
                        const rtsp_request_t *request)
 {
     const char *transport = get_header_value(request, "Transport");
     uint32_t timing_port = 0;
-    if (transport && (!strstr(transport, "RTP/AVP/UDP") ||
-        parameter_u32(transport, "timing_port", &timing_port) < 0 || timing_port > 65535))
-        return rtsp_send_response(client, 461, "Unsupported Transport", request->cseq, NULL, NULL, 0);
+    if (transport &&
+        (!strstr(transport, "RTP/AVP/UDP") ||
+         parameter_u32(transport, "timing_port", &timing_port) < 0 || timing_port > 65535))
+        return rtsp_send_response(
+            client, 461, "Unsupported Transport", request->cseq, NULL, NULL, 0);
     os_mutex_lock(&instance->state_lock);
-    if (instance->stream_owner == client) {
+    if (instance->stream_owner == client)
+    {
         instance->stream.timing_peer = client->peer;
         instance->stream.timing_peer.port = (uint16_t)timing_port;
         ++instance->stream.generation;
@@ -182,14 +214,18 @@ int airplay_rtsp_setup(rtsp_instance_t *instance, rtsp_client_t *client,
     LOG_INFO("RTSP", "SETUP timing peer=%s:%u\n", client->peer.ip, timing_port);
     const char *headers =
         "Session: 00000001\r\n"
-        "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=" AIRPLAY_STRINGIFY(AIRPLAY_AUDIO_PORT)
-        ";control_port=" AIRPLAY_STRINGIFY(AIRPLAY_CONTROL_PORT)
-        ";timing_port=" AIRPLAY_STRINGIFY(AIRPLAY_TIMING_PORT) "\r\n"
-        "Audio-Jack-Status: connected\r\n";
+        "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=" AIRPLAY_STRINGIFY(AIRPLAY_AUDIO_PORT) ";control_port=" AIRPLAY_STRINGIFY(
+            AIRPLAY_CONTROL_PORT) ";timing_port=" AIRPLAY_STRINGIFY(AIRPLAY_TIMING_PORT) "\r\n"
+                                                                                         "Audio-"
+                                                                                         "Jack-"
+                                                                                         "Status: "
+                                                                                         "connected"
+                                                                                         "\r\n";
     return rtsp_send_response(client, 200, "OK", request->cseq, headers, NULL, 0);
 }
 
-int airplay_rtsp_get_parameter(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_get_parameter(rtsp_instance_t *instance,
+                               rtsp_client_t *client,
                                const rtsp_request_t *request)
 {
     char volume_body[64];
@@ -205,11 +241,12 @@ int airplay_rtsp_get_parameter(rtsp_instance_t *instance, rtsp_client_t *client,
         body = (const uint8_t *)volume_body;
         length = strlen(volume_body);
     }
-    return rtsp_send_response(client, 200, "OK", request->cseq,
-                             "Content-Type: text/parameters\r\n", body, length);
+    return rtsp_send_response(
+        client, 200, "OK", request->cseq, "Content-Type: text/parameters\r\n", body, length);
 }
 
-int airplay_rtsp_set_parameter(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_set_parameter(rtsp_instance_t *instance,
+                               rtsp_client_t *client,
                                const rtsp_request_t *request)
 {
     const char *content_type = get_header_value(request, "Content-Type");
@@ -225,7 +262,8 @@ int airplay_rtsp_set_parameter(rtsp_instance_t *instance, rtsp_client_t *client,
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_flush(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_flush(rtsp_instance_t *instance,
+                       rtsp_client_t *client,
                        const rtsp_request_t *request)
 {
     uint32_t timestamp = 0;
@@ -233,7 +271,8 @@ int airplay_rtsp_flush(rtsp_instance_t *instance, rtsp_client_t *client,
     if (has_timestamp < 0)
         return rtsp_send_response(client, 400, "Bad Request", request->cseq, NULL, NULL, 0);
     os_mutex_lock(&instance->state_lock);
-    if (instance->stream_owner == client) {
+    if (instance->stream_owner == client)
+    {
         ++instance->stream.flush_generation;
         instance->stream.has_timestamp_floor = has_timestamp;
         instance->stream.timestamp_floor = timestamp;
@@ -244,13 +283,15 @@ int airplay_rtsp_flush(rtsp_instance_t *instance, rtsp_client_t *client,
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_flushbuffered(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_flushbuffered(rtsp_instance_t *instance,
+                               rtsp_client_t *client,
                                const rtsp_request_t *request)
 {
     return airplay_rtsp_flush(instance, client, request);
 }
 
-int airplay_rtsp_teardown(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_teardown(rtsp_instance_t *instance,
+                          rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     os_mutex_lock(&instance->state_lock);
@@ -266,7 +307,8 @@ int airplay_rtsp_teardown(rtsp_instance_t *instance, rtsp_client_t *client,
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_pause(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_pause(rtsp_instance_t *instance,
+                       rtsp_client_t *client,
                        const rtsp_request_t *request)
 {
     os_mutex_lock(&instance->state_lock);
@@ -276,7 +318,8 @@ int airplay_rtsp_pause(rtsp_instance_t *instance, rtsp_client_t *client,
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 
-int airplay_rtsp_record(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_record(rtsp_instance_t *instance,
+                        rtsp_client_t *client,
                         const rtsp_request_t *request)
 {
     int has_session;
@@ -286,9 +329,11 @@ int airplay_rtsp_record(rtsp_instance_t *instance, rtsp_client_t *client,
         return rtsp_send_response(client, 400, "Bad Request", request->cseq, NULL, NULL, 0);
     os_mutex_lock(&instance->state_lock);
     has_session = instance->stream.has_session && instance->stream_owner == client;
-    if (has_session) {
+    if (has_session)
+    {
         instance->stream.recording = 1;
-        if (has_timestamp) {
+        if (has_timestamp)
+        {
             instance->stream.has_timestamp_floor = 1;
             instance->stream.timestamp_floor = timestamp;
             instance->stream.floor_exclusive = 0;
@@ -296,14 +341,20 @@ int airplay_rtsp_record(rtsp_instance_t *instance, rtsp_client_t *client,
     }
     os_mutex_unlock(&instance->state_lock);
     if (!has_session)
-        return rtsp_send_response(client, 455, "Method Not Valid in This State",
-                                 request->cseq, NULL, NULL, 0);
-    return rtsp_send_response(client, 200, "OK", request->cseq,
-                             "Session: 00000001\r\nAudio-Latency: "
-                             AIRPLAY_STRINGIFY(AIRPLAY_AUDIO_LATENCY_FRAMES) "\r\n", NULL, 0);
+        return rtsp_send_response(
+            client, 455, "Method Not Valid in This State", request->cseq, NULL, NULL, 0);
+    return rtsp_send_response(client,
+                              200,
+                              "OK",
+                              request->cseq,
+                              "Session: 00000001\r\nAudio-Latency: " AIRPLAY_STRINGIFY(
+                                  AIRPLAY_AUDIO_LATENCY_FRAMES) "\r\n",
+                              NULL,
+                              0);
 }
 
-int airplay_rtsp_play(rtsp_instance_t *instance, rtsp_client_t *client,
+int airplay_rtsp_play(rtsp_instance_t *instance,
+                      rtsp_client_t *client,
                       const rtsp_request_t *request)
 {
     const char *session = get_header_value(request, "Session");

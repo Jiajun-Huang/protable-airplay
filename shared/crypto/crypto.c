@@ -1,16 +1,16 @@
-#include "crypto.h"
-#include "log.h"
+#include "crypto/crypto.h"
+#include "util/log.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include <mbedtls/pk.h>
-#include <mbedtls/rsa.h>
-#include <mbedtls/md.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
 #include <mbedtls/aes.h>
 #include <mbedtls/chachapoly.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/rsa.h>
 
 static const char airport_private_key[] =
     "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -37,7 +37,8 @@ static const char airport_private_key[] =
     "2gG0N5hvJpzwwhbhXqFKA4zaaSrw622wDniAK5MlIE0tIAKKP4yxNGjoD2QYjhBGuhvkWKY=\n"
     "-----END RSA PRIVATE KEY-----\0";
 
-int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key, size_t encrypted_len,
+int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key,
+                               size_t encrypted_len,
                                uint8_t *decrypted_key)
 {
     if (!encrypted_key || !decrypted_key || encrypted_len == 0)
@@ -55,14 +56,16 @@ int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key, size_t encrypted_le
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
 
-    if (mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                              (const unsigned char *)pers, strlen(pers)) != 0)
+    if (mbedtls_ctr_drbg_seed(
+            &ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers)) !=
+        0)
         goto cleanup;
 
     if (mbedtls_pk_parse_key(&pk,
                              (const unsigned char *)airport_private_key,
                              sizeof(airport_private_key),
-                             NULL, 0) != 0)
+                             NULL,
+                             0) != 0)
         goto cleanup;
 
     if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA))
@@ -74,9 +77,13 @@ int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key, size_t encrypted_le
     mbedtls_rsa_set_padding(rsa, MBEDTLS_RSA_PKCS_V21, MBEDTLS_MD_SHA1);
 
     if (mbedtls_pk_decrypt(&pk,
-                           encrypted_key, encrypted_len,
-                           outbuf, &out_len, sizeof(outbuf),
-                           mbedtls_ctr_drbg_random, &ctr_drbg) != 0)
+                           encrypted_key,
+                           encrypted_len,
+                           outbuf,
+                           &out_len,
+                           sizeof(outbuf),
+                           mbedtls_ctr_drbg_random,
+                           &ctr_drbg) != 0)
         goto cleanup;
 
     if (out_len < 16)
@@ -127,9 +134,12 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t 
 }
 
 int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
-                                const uint8_t *full_packet, size_t full_packet_len,
-                                size_t payload_offset, size_t payload_len,
-                                uint8_t *output, size_t output_capacity,
+                                const uint8_t *full_packet,
+                                size_t full_packet_len,
+                                size_t payload_offset,
+                                size_t payload_len,
+                                uint8_t *output,
+                                size_t output_capacity,
                                 size_t *output_len)
 {
     mbedtls_chachapoly_context context;
@@ -154,9 +164,8 @@ int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
     mbedtls_chachapoly_init(&context);
     ret = mbedtls_chachapoly_setkey(&context, key);
     if (ret == 0)
-        ret = mbedtls_chachapoly_auth_decrypt(&context, encrypted_len - 16,
-                                              nonce, full_packet + 4, 8,
-                                              tag, payload, output);
+        ret = mbedtls_chachapoly_auth_decrypt(
+            &context, encrypted_len - 16, nonce, full_packet + 4, 8, tag, payload, output);
     mbedtls_chachapoly_free(&context);
     if (ret != 0)
         return -1;

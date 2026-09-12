@@ -1,5 +1,5 @@
-#include "server.h"
-#include "network_util.h"
+#include "service/server.h"
+#include "util/network_util.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -69,16 +69,23 @@ int airplay_server_init(airplay_server_t *server, const airplay_config_t *config
         goto fail;
     server->audio_initialized = 1;
 
-    snprintf(server->deviceid_txt, sizeof(server->deviceid_txt),
-             "deviceid=%.2s:%.2s:%.2s:%.2s:%.2s:%.2s", config->local_mac_hex,
-             config->local_mac_hex + 2, config->local_mac_hex + 4,
-             config->local_mac_hex + 6, config->local_mac_hex + 8, config->local_mac_hex + 10);
-    const char *txt[] = {
-        server->deviceid_txt, AIRPLAY_RAOP_TXT_ENTRIES};
+    snprintf(server->deviceid_txt,
+             sizeof(server->deviceid_txt),
+             "deviceid=%.2s:%.2s:%.2s:%.2s:%.2s:%.2s",
+             config->local_mac_hex,
+             config->local_mac_hex + 2,
+             config->local_mac_hex + 4,
+             config->local_mac_hex + 6,
+             config->local_mac_hex + 8,
+             config->local_mac_hex + 10);
+    const char *txt[] = {server->deviceid_txt, AIRPLAY_RAOP_TXT_ENTRIES};
     memcpy(server->raop_txt, txt, sizeof(txt));
-    if (airplay_discovery_init(&server->discovery, server->config.device_name,
-                               server->config.local_mac_hex, server->config.local_ip,
-                               server->raop_txt, sizeof(txt) / sizeof(txt[0])) != 0)
+    if (airplay_discovery_init(&server->discovery,
+                               server->config.device_name,
+                               server->config.local_mac_hex,
+                               server->config.local_ip,
+                               server->raop_txt,
+                               sizeof(txt) / sizeof(txt[0])) != 0)
         goto fail;
     server->discovery_initialized = 1;
     return 0;
@@ -164,8 +171,10 @@ void airplay_audio_main(void *arg)
             {
                 close_audio(server);
                 if (audio_pipeline_configure(&server->pipeline, &stream.session) != 0 ||
-                    audio_open(&server->audio, stream.session.sample_rate,
-                               (uint8_t)stream.session.channels, 16) != 0 ||
+                    audio_open(&server->audio,
+                               stream.session.sample_rate,
+                               (uint8_t)stream.session.channels,
+                               16) != 0 ||
                     audio_pipeline_start(&server->pipeline) != 0)
                 {
                     server_fail(server);
@@ -176,9 +185,11 @@ void airplay_audio_main(void *arg)
                 volume_db = stream.volume_db;
                 audio_pipeline_set_volume(&server->pipeline, volume_db);
                 if (stream.has_timestamp_floor)
-                    audio_pipeline_set_start(&server->pipeline, stream.timestamp_floor, stream.floor_exclusive);
+                    audio_pipeline_set_start(
+                        &server->pipeline, stream.timestamp_floor, stream.floor_exclusive);
                 if (stream.has_buffered_flush_sequence && stream.session.stream_type == 103)
-                    buffered_audio_flush(&server->pipeline.buffered, stream.buffered_flush_sequence);
+                    buffered_audio_flush(&server->pipeline.buffered,
+                                         stream.buffered_flush_sequence);
             }
             if (volume_db != stream.volume_db)
             {

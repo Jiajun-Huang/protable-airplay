@@ -40,8 +40,7 @@ static void buffer_finished(void *context, AudioQueueRef queue, AudioQueueBuffer
     pthread_mutex_unlock(&device->mutex);
 }
 
-int audio_open(audio_device_t **device, uint32_t sample_rate,
-               uint8_t channels, uint8_t bits)
+int audio_open(audio_device_t **device, uint32_t sample_rate, uint8_t channels, uint8_t bits)
 {
     audio_device_t *output;
     AudioStreamBasicDescription format = {0};
@@ -62,15 +61,15 @@ int audio_open(audio_device_t **device, uint32_t sample_rate,
     output->channels = channels;
     format.mSampleRate = sample_rate;
     format.mFormatID = kAudioFormatLinearPCM;
-    format.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked |
-                          kAudioFormatFlagsNativeEndian;
+    format.mFormatFlags =
+        kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked | kAudioFormatFlagsNativeEndian;
     format.mBytesPerPacket = channels * sizeof(int16_t);
     format.mFramesPerPacket = 1;
     format.mBytesPerFrame = format.mBytesPerPacket;
     format.mChannelsPerFrame = channels;
     format.mBitsPerChannel = bits;
-    if (AudioQueueNewOutput(&format, buffer_finished, output, NULL, NULL, 0,
-                            &output->queue) != noErr)
+    if (AudioQueueNewOutput(&format, buffer_finished, output, NULL, NULL, 0, &output->queue) !=
+        noErr)
     {
         pthread_mutex_destroy(&output->mutex);
         free(output);
@@ -78,7 +77,8 @@ int audio_open(audio_device_t **device, uint32_t sample_rate,
     }
     for (i = 0; i < AIRPLAY_OUTPUT_BUFFER_COUNT; ++i)
     {
-        if (AudioQueueAllocateBuffer(output->queue, AIRPLAY_OUTPUT_BUFFER_SAMPLES * sizeof(int16_t),
+        if (AudioQueueAllocateBuffer(output->queue,
+                                     AIRPLAY_OUTPUT_BUFFER_SAMPLES * sizeof(int16_t),
                                      &output->buffers[i]) != noErr)
         {
             audio_close(output);
@@ -158,4 +158,3 @@ int audio_delay_frames(audio_device_t *device)
     pthread_mutex_unlock(&device->mutex);
     return frames > INT_MAX ? INT_MAX : (int)frames;
 }
-

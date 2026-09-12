@@ -18,8 +18,7 @@ struct audio_device
     uint64_t submitted_frames, played_frames;
 };
 
-int audio_open(audio_device_t **device, uint32_t sample_rate,
-               uint8_t channels, uint8_t bits)
+int audio_open(audio_device_t **device, uint32_t sample_rate, uint8_t channels, uint8_t bits)
 {
     audio_device_t *output;
     WAVEFORMATEX format = {0};
@@ -40,8 +39,7 @@ int audio_open(audio_device_t **device, uint32_t sample_rate,
     format.wBitsPerSample = bits;
     format.nBlockAlign = (WORD)(channels * sizeof(int16_t));
     format.nAvgBytesPerSec = sample_rate * format.nBlockAlign;
-    if (waveOutOpen(&output->output, WAVE_MAPPER, &format, 0, 0,
-                    CALLBACK_NULL) != MMSYSERR_NOERROR)
+    if (waveOutOpen(&output->output, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR)
     {
         free(output);
         return -1;
@@ -50,8 +48,8 @@ int audio_open(audio_device_t **device, uint32_t sample_rate,
     {
         output->headers[i].lpData = (LPSTR)output->samples[i];
         output->headers[i].dwBufferLength = sizeof(output->samples[i]);
-        if (waveOutPrepareHeader(output->output, &output->headers[i],
-                                 sizeof(WAVEHDR)) != MMSYSERR_NOERROR)
+        if (waveOutPrepareHeader(output->output, &output->headers[i], sizeof(WAVEHDR)) !=
+            MMSYSERR_NOERROR)
         {
             audio_close(output);
             return -1;
@@ -94,7 +92,8 @@ int audio_delay_frames(audio_device_t *device)
 {
     MMTIME position = {0};
     position.wType = TIME_SAMPLES;
-    if (!device || waveOutGetPosition(device->output, &position, sizeof(position)) != MMSYSERR_NOERROR)
+    if (!device ||
+        waveOutGetPosition(device->output, &position, sizeof(position)) != MMSYSERR_NOERROR)
         return -1;
     uint32_t frames;
     if (position.wType == TIME_SAMPLES)
@@ -107,7 +106,9 @@ int audio_delay_frames(audio_device_t *device)
         return -1;
     device->played_frames += (uint32_t)(frames - device->last_position);
     device->last_position = frames;
-    uint64_t delay = device->submitted_frames > device->played_frames ? device->submitted_frames - device->played_frames : 0;
+    uint64_t delay = device->submitted_frames > device->played_frames
+                         ? device->submitted_frames - device->played_frames
+                         : 0;
     return delay > INT_MAX ? INT_MAX : (int)delay;
 }
 

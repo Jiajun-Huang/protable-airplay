@@ -1,6 +1,6 @@
 #include "airplay_discovery.h"
 #include "airplay_config.h"
-#include "network_util.h"
+#include "util/network_util.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,15 +17,17 @@ int airplay_discovery_init(airplay_discovery_t *discovery,
     int length;
     if (!discovery || !friendly_name || !friendly_name[0] ||
         strlen(friendly_name) >= sizeof(discovery->airplay_name) || !local_ip ||
-        raop_txt_count > UINT16_MAX ||
-        net_str_to_ipv4(local_ip, &address) != 0 || strlen(local_ip) >= sizeof(discovery->local_ip))
+        raop_txt_count > UINT16_MAX || net_str_to_ipv4(local_ip, &address) != 0 ||
+        strlen(local_ip) >= sizeof(discovery->local_ip))
         return -1;
     memset(discovery, 0, sizeof(*discovery));
     discovery->socket = (net_socket_t)NET_SOCKET_INIT;
     memcpy(discovery->local_ip, local_ip, strlen(local_ip) + 1);
-    length = snprintf(discovery->raop_name, sizeof(discovery->raop_name),
+    length = snprintf(discovery->raop_name,
+                      sizeof(discovery->raop_name),
                       local_mac && local_mac[0] ? "%s@%s" : "%s%s",
-                      local_mac && local_mac[0] ? local_mac : "", friendly_name);
+                      local_mac && local_mac[0] ? local_mac : "",
+                      friendly_name);
     if (length < 0 || (size_t)length >= sizeof(discovery->raop_name))
         return -1;
     length = snprintf(discovery->hostname, sizeof(discovery->hostname), "%s.local", friendly_name);
@@ -49,12 +51,22 @@ int airplay_discovery_init(airplay_discovery_t *discovery,
         goto fail;
     strcpy(discovery->airplay_name, friendly_name);
     const char *mac = local_mac && strlen(local_mac) == 12 ? local_mac : "000000000000";
-    snprintf(discovery->deviceid, sizeof(discovery->deviceid),
+    snprintf(discovery->deviceid,
+             sizeof(discovery->deviceid),
              "deviceid=%.2s:%.2s:%.2s:%.2s:%.2s:%.2s",
-             mac, mac + 2, mac + 4, mac + 6, mac + 8, mac + 10);
+             mac,
+             mac + 2,
+             mac + 4,
+             mac + 6,
+             mac + 8,
+             mac + 10);
     const char *airplay_txt[] = {discovery->deviceid,
-        "features=" AIRPLAY2_FEATURES_TEXT, "flags=0x4", "model=" AIRPLAY_MODEL_NAME,
-        "srcvers=" AIRPLAY2_SOURCE_VERSION, "vv=2", "acl=0"};
+                                 "features=" AIRPLAY2_FEATURES_TEXT,
+                                 "flags=0x4",
+                                 "model=" AIRPLAY_MODEL_NAME,
+                                 "srcvers=" AIRPLAY2_SOURCE_VERSION,
+                                 "vv=2",
+                                 "acl=0"};
     memcpy(discovery->airplay_txt, airplay_txt, sizeof(airplay_txt));
     config.service_type = "_airplay._tcp.local";
     config.instance_name = discovery->airplay_name;
@@ -82,11 +94,12 @@ int airplay_discovery_poll(airplay_discovery_t *discovery, int timeout_ms)
         return 0;
     if (length == NET_ERROR)
         return -1;
-    mdns_error_t result = mdns_handle_packet_from(&discovery->service, packet, (size_t)length, &source);
+    mdns_error_t result =
+        mdns_handle_packet_from(&discovery->service, packet, (size_t)length, &source);
     if (result == MDNS_ERR_SOCKET_ERROR)
         return -1;
-    if (mdns_handle_packet_from(&discovery->airplay_service, packet, (size_t)length, &source)
-        == MDNS_ERR_SOCKET_ERROR)
+    if (mdns_handle_packet_from(&discovery->airplay_service, packet, (size_t)length, &source) ==
+        MDNS_ERR_SOCKET_ERROR)
         return -1;
     return 0;
 }

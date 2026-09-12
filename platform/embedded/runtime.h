@@ -1,7 +1,9 @@
 #ifndef AIRPLAY_EMBEDDED_RUNTIME_H
 #define AIRPLAY_EMBEDDED_RUNTIME_H
 
-#include "server.h"
+#include "service/server.h"
+
+/* FreeRTOS runtime wrapper that owns the server instance and its service tasks. */
 
 /* Call from one owner task after the scheduler, network interface, and board
  * clock are ready. The owner serializes start/stop; neither is called by a

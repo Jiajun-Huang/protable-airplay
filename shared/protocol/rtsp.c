@@ -1,8 +1,8 @@
-#include "rtsp.h"
-#include "log.h"
-#include "airplay/airplay_rtsp.h"
+#include "protocol/rtsp.h"
 #include "airplay/airplay2.h"
-#include "network_util.h"
+#include "airplay/airplay_rtsp.h"
+#include "util/log.h"
+#include "util/network_util.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,10 +13,23 @@ static rtsp_method_t parse_method(const char *method)
     {
         const char *name;
         rtsp_method_t value;
-    } methods[] = {
-        {"GET", RTSP_METHOD_GET}, {"POST", RTSP_METHOD_POST}, {"OPTIONS", RTSP_METHOD_OPTIONS}, {"ANNOUNCE", RTSP_METHOD_ANNOUNCE}, {"DESCRIBE", RTSP_METHOD_DESCRIBE}, {"SETUP", RTSP_METHOD_SETUP}, {"RECORD", RTSP_METHOD_RECORD}, {"FLUSH", RTSP_METHOD_FLUSH}, {"FLUSHBUFFERED", RTSP_METHOD_FLUSHBUFFERED}, {"PLAY", RTSP_METHOD_PLAY}, {"PAUSE", RTSP_METHOD_PAUSE}, {"TEARDOWN", RTSP_METHOD_TEARDOWN}, {"GET_PARAMETER", RTSP_METHOD_GET_PARAMETER}, {"SET_PARAMETER", RTSP_METHOD_SET_PARAMETER},
-        {"SETPEERS", RTSP_METHOD_SETPEERS}, {"SETPEERSX", RTSP_METHOD_SETPEERS},
-        {"SETRATEANCHORTIME", RTSP_METHOD_SETRATEANCHORTIME}};
+    } methods[] = {{"GET", RTSP_METHOD_GET},
+                   {"POST", RTSP_METHOD_POST},
+                   {"OPTIONS", RTSP_METHOD_OPTIONS},
+                   {"ANNOUNCE", RTSP_METHOD_ANNOUNCE},
+                   {"DESCRIBE", RTSP_METHOD_DESCRIBE},
+                   {"SETUP", RTSP_METHOD_SETUP},
+                   {"RECORD", RTSP_METHOD_RECORD},
+                   {"FLUSH", RTSP_METHOD_FLUSH},
+                   {"FLUSHBUFFERED", RTSP_METHOD_FLUSHBUFFERED},
+                   {"PLAY", RTSP_METHOD_PLAY},
+                   {"PAUSE", RTSP_METHOD_PAUSE},
+                   {"TEARDOWN", RTSP_METHOD_TEARDOWN},
+                   {"GET_PARAMETER", RTSP_METHOD_GET_PARAMETER},
+                   {"SET_PARAMETER", RTSP_METHOD_SET_PARAMETER},
+                   {"SETPEERS", RTSP_METHOD_SETPEERS},
+                   {"SETPEERSX", RTSP_METHOD_SETPEERS},
+                   {"SETRATEANCHORTIME", RTSP_METHOD_SETRATEANCHORTIME}};
     size_t i;
     for (i = 0; i < sizeof(methods) / sizeof(methods[0]); ++i)
         if (net_ascii_casecmp(method, methods[i].name) == 0)
@@ -53,8 +66,7 @@ static int parse_uint32(const char *text, uint32_t *out)
 }
 
 /* A TCP receive may contain part of a request or several complete requests. */
-static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request,
-                         size_t *consumed)
+static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request, size_t *consumed)
 {
     size_t headers_end = 0, pos = 0, i;
     uint32_t content_length = 0;
@@ -78,8 +90,7 @@ static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request
     {
         char line[1024];
         size_t end = pos, line_length;
-        while (end + 1 < headers_end &&
-               !(buffer[end] == '\r' && buffer[end + 1] == '\n'))
+        while (end + 1 < headers_end && !(buffer[end] == '\r' && buffer[end + 1] == '\n'))
             ++end;
         if (end + 1 >= headers_end)
             return -1;
@@ -94,8 +105,12 @@ static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request
         if (first_line)
         {
             char method[64], trailing;
-            if (sscanf(line, "%63s %255s %31s %c", method, request->uri,
-                       request->version, &trailing) != 3 ||
+            if (sscanf(line,
+                       "%63s %255s %31s %c",
+                       method,
+                       request->uri,
+                       request->version,
+                       &trailing) != 3 ||
                 (strncmp(request->version, "RTSP/", 5) != 0 &&
                  strcmp(request->version, "HTTP/1.1") != 0))
                 return -1;
@@ -106,8 +121,8 @@ static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request
         {
             char *colon = strchr(line, ':'), *name, *value;
             rtsp_header_t *header;
-            if (!colon || request->header_count ==
-                              sizeof(request->headers) / sizeof(request->headers[0]))
+            if (!colon ||
+                request->header_count == sizeof(request->headers) / sizeof(request->headers[0]))
                 return -1;
             *colon = '\0';
             name = trim(line);
@@ -146,58 +161,78 @@ static int send_client(rtsp_client_t *client, const uint8_t *data, size_t size)
     if (!client->encrypted)
         return net_tcp_send_all(&client->socket, data, size, 1000);
     uint8_t record[PAIR_RECORD_MAX + 18];
-    while (size) {
+    while (size)
+    {
         size_t n = size > PAIR_RECORD_MAX ? PAIR_RECORD_MAX : size;
         int length = pairing_seal(&client->pairing, data, n, record);
         if (length < 0 || net_tcp_send_all(&client->socket, record, (size_t)length, 1000))
             return -1;
-        data += n; size -= n;
+        data += n;
+        size -= n;
     }
     return 0;
 }
 
 static int receive_client(rtsp_client_t *client, uint8_t *out, size_t capacity)
 {
-    if (!client->encrypted) return net_tcp_recv(&client->socket, out, capacity, 0);
+    if (!client->encrypted)
+        return net_tcp_recv(&client->socket, out, capacity, 0);
     size_t need = 2;
-    if (client->record_used >= 2) {
+    if (client->record_used >= 2)
+    {
         size_t length = client->record[0] | (size_t)client->record[1] << 8;
-        if (!length || length > PAIR_RECORD_MAX || length > capacity) {
-            LOG_WARN("rtsp", "Invalid encrypted record length=%zu capacity=%zu\n", length, capacity);
+        if (!length || length > PAIR_RECORD_MAX || length > capacity)
+        {
+            LOG_WARN(
+                "rtsp", "Invalid encrypted record length=%zu capacity=%zu\n", length, capacity);
             return NET_ERROR;
         }
         need = length + 18;
     }
-    int n = net_tcp_recv(&client->socket, client->record + client->record_used,
-                        need - client->record_used, 0);
-    if (n <= 0) return n;
+    int n = net_tcp_recv(
+        &client->socket, client->record + client->record_used, need - client->record_used, 0);
+    if (n <= 0)
+        return n;
     client->record_used += (size_t)n;
-    if (need == 2 || client->record_used < need) return NET_TIMEOUT;
+    if (need == 2 || client->record_used < need)
+        return NET_TIMEOUT;
     int plain = pairing_open(&client->pairing, client->record, need, out);
-    if (plain < 0) LOG_WARN("rtsp", "Control record authentication failed: counter=%llu\n",
-                            (unsigned long long)client->pairing.read_counter);
+    if (plain < 0)
+        LOG_WARN("rtsp",
+                 "Control record authentication failed: counter=%llu\n",
+                 (unsigned long long)client->pairing.read_counter);
     client->record_used = 0;
     return plain < 0 ? NET_ERROR : plain;
 }
 
-int rtsp_send_response(rtsp_client_t *client, int status, const char *status_text,
-                       uint32_t cseq, const char *extra_headers,
-                       const uint8_t *body, size_t body_len)
+int rtsp_send_response(rtsp_client_t *client,
+                       int status,
+                       const char *status_text,
+                       uint32_t cseq,
+                       const char *extra_headers,
+                       const uint8_t *body,
+                       size_t body_len)
 {
     char response[2048];
     int length, appended;
     if (!client || !status_text || (body_len && !body))
         return -1;
-    length = snprintf(response, sizeof(response),
+    length = snprintf(response,
+                      sizeof(response),
                       "%s %d %s\r\nCSeq: %u\r\nServer: AirTunes/" AIRPLAY_SERVER_VERSION "\r\n%s",
-                      client->http ? "HTTP/1.1" : "RTSP/1.0", status, status_text, (unsigned)cseq,
+                      client->http ? "HTTP/1.1" : "RTSP/1.0",
+                      status,
+                      status_text,
+                      (unsigned)cseq,
                       extra_headers ? extra_headers : "");
     if (length < 0 || (size_t)length >= sizeof(response))
         return -1;
     if (body_len || client->http)
     {
-        appended = snprintf(response + length, sizeof(response) - (size_t)length,
-                            "Content-Length: %zu\r\n", body_len);
+        appended = snprintf(response + length,
+                            sizeof(response) - (size_t)length,
+                            "Content-Length: %zu\r\n",
+                            body_len);
         if (appended < 0 || (size_t)appended >= sizeof(response) - (size_t)length)
             return -1;
         length += appended;
@@ -213,16 +248,23 @@ int rtsp_send_response(rtsp_client_t *client, int status, const char *status_tex
     return 0;
 }
 
-static int handle_request(rtsp_instance_t *instance, rtsp_client_t *client,
+static int handle_request(rtsp_instance_t *instance,
+                          rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     client->http = strcmp(request->version, "HTTP/1.1") == 0;
-    LOG_DEBUG("rtsp", "%s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
-              request->version, client->peer.ip, request->cseq, request->method,
-              request->uri, request->body_len);
+    LOG_DEBUG("rtsp",
+              "%s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
+              request->version,
+              client->peer.ip,
+              request->cseq,
+              request->method,
+              request->uri,
+              request->body_len);
     int handled;
     int result = airplay2_handle(instance, client, request, &handled);
-    if (handled) return result;
+    if (handled)
+        return result;
     switch (request->method)
     {
     case RTSP_METHOD_OPTIONS:
@@ -260,8 +302,12 @@ static void close_client(rtsp_instance_t *instance, size_t index)
 {
     rtsp_client_t *client = &instance->clients[index];
     if (client->socket.handle != UINTPTR_MAX)
-        LOG_DEBUG("rtsp", "Closing %s encrypted=%d buffered=%zu record=%zu\n",
-                  client->peer.ip, client->encrypted, instance->rx_lengths[index], client->record_used);
+        LOG_DEBUG("rtsp",
+                  "Closing %s encrypted=%d buffered=%zu record=%zu\n",
+                  client->peer.ip,
+                  client->encrypted,
+                  instance->rx_lengths[index],
+                  client->record_used);
     os_mutex_lock(&instance->state_lock);
     if (instance->stream_owner == client)
     {
@@ -290,7 +336,8 @@ int rtsp_server_create(rtsp_instance_t *instance, uint16_t port)
         return -1;
     memset(instance, 0, sizeof(*instance));
     instance->listener = (net_socket_t)NET_SOCKET_INIT;
-    for (i = 0; i < RTSP_MAX_CLIENTS; ++i) {
+    for (i = 0; i < RTSP_MAX_CLIENTS; ++i)
+    {
         instance->clients[i].socket = (net_socket_t)NET_SOCKET_INIT;
         instance->clients[i].event_listener = (net_socket_t)NET_SOCKET_INIT;
         instance->clients[i].event_client = (net_socket_t)NET_SOCKET_INIT;
@@ -306,20 +353,18 @@ int rtsp_server_create(rtsp_instance_t *instance, uint16_t port)
     return 0;
 }
 
-int rtsp_set_identity(rtsp_instance_t *instance, const char *local_ip,
-                      const char *local_mac_hex)
+int rtsp_set_identity(rtsp_instance_t *instance, const char *local_ip, const char *local_mac_hex)
 {
     uint32_t ip;
     size_t i;
     if (!instance || !local_ip || !local_mac_hex ||
-        strlen(local_ip) >= sizeof(instance->local_ip) ||
-        strlen(local_mac_hex) != 12 || net_str_to_ipv4(local_ip, &ip) != 0)
+        strlen(local_ip) >= sizeof(instance->local_ip) || strlen(local_mac_hex) != 12 ||
+        net_str_to_ipv4(local_ip, &ip) != 0)
         return -1;
     for (i = 0; i < 12; ++i)
     {
         char c = local_mac_hex[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
-              (c >= 'A' && c <= 'F')))
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
             return -1;
     }
     os_mutex_lock(&instance->state_lock);
@@ -347,7 +392,8 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
     if (!instance || instance->listener.handle == UINTPTR_MAX)
         return -1;
     sockets[0] = instance->listener;
-    for (i = 0; i < RTSP_MAX_CLIENTS; ++i) {
+    for (i = 0; i < RTSP_MAX_CLIENTS; ++i)
+    {
         sockets[i + 1] = instance->clients[i].socket;
         sockets[1 + RTSP_MAX_CLIENTS + i * 2] = instance->clients[i].event_listener;
         sockets[2 + RTSP_MAX_CLIENTS + i * 2] = instance->clients[i].event_client;
@@ -363,22 +409,32 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
         int received;
         size_t *length = &instance->rx_lengths[i];
         rtsp_client_t *client = &instance->clients[i];
-        if (ready[1 + RTSP_MAX_CLIENTS + i * 2]) {
-            net_socket_t event = NET_SOCKET_INIT; net_addr_t peer;
-            if (net_tcp_accept(&client->event_listener, &event, &peer, 0) == 0) {
-                if (strcmp(peer.ip, client->peer.ip)) net_close(&event);
-                else { net_close(&client->event_client); client->event_client = event; }
+        if (ready[1 + RTSP_MAX_CLIENTS + i * 2])
+        {
+            net_socket_t event = NET_SOCKET_INIT;
+            net_addr_t peer;
+            if (net_tcp_accept(&client->event_listener, &event, &peer, 0) == 0)
+            {
+                if (strcmp(peer.ip, client->peer.ip))
+                    net_close(&event);
+                else
+                {
+                    net_close(&client->event_client);
+                    client->event_client = event;
+                }
             }
         }
-        if (ready[2 + RTSP_MAX_CLIENTS + i * 2]) {
+        if (ready[2 + RTSP_MAX_CLIENTS + i * 2])
+        {
             uint8_t event_data[1024];
             int n = net_tcp_recv(&client->event_client, event_data, sizeof(event_data), 0);
-            if (n == 0 || n == NET_ERROR) net_close(&client->event_client);
+            if (n == 0 || n == NET_ERROR)
+                net_close(&client->event_client);
         }
         if (!ready[i + 1])
             continue;
-        received = receive_client(client, instance->rx_buffers[i] + *length,
-                                  RTSP_RX_BUFFER_SIZE - *length);
+        received = receive_client(
+            client, instance->rx_buffers[i] + *length, RTSP_RX_BUFFER_SIZE - *length);
         if (received == NET_TIMEOUT)
             continue;
         if (received <= 0)
@@ -390,13 +446,14 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
         while (*length)
         {
             size_t consumed;
-            int parsed = parse_request(instance->rx_buffers[i], *length,
-                                       &instance->request, &consumed);
+            int parsed =
+                parse_request(instance->rx_buffers[i], *length, &instance->request, &consumed);
             if (parsed == 0)
                 break;
             if (parsed < 0)
             {
-                LOG_WARN("rtsp", "Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
+                LOG_WARN(
+                    "rtsp", "Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
                 rtsp_send_response(client, 400, "Bad Request", 0, NULL, NULL, 0);
                 close_client(instance, i);
                 break;
@@ -410,7 +467,8 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
             *length -= consumed;
             memmove(instance->rx_buffers[i], instance->rx_buffers[i] + consumed, *length);
             /* No unauthenticated request may cross the final pairing response. */
-            if (!was_encrypted && client->encrypted && *length) {
+            if (!was_encrypted && client->encrypted && *length)
+            {
                 LOG_WARN("rtsp", "Unexpected data before the encrypted session boundary\n");
                 close_client(instance, i);
                 break;

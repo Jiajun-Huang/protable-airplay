@@ -1,4 +1,4 @@
-#include "ntp_sync.h"
+#include "sync/ntp_sync.h"
 #include "os.h"
 #include <string.h>
 
@@ -35,7 +35,10 @@ int ntp_sync_init(ntp_sync_t *sync)
     memset(sync, 0, sizeof(*sync));
     return 0;
 }
-ntp_timestamp_t ntp_sync_now(void) { return from_us(os_time_us()); }
+ntp_timestamp_t ntp_sync_now(void)
+{
+    return from_us(os_time_us());
+}
 int64_t ntp_sync_diff_us(ntp_timestamp_t a, ntp_timestamp_t b)
 {
     /* Signed modular seconds also handles the NTP era rollover. */
@@ -60,12 +63,13 @@ int ntp_sync_request(ntp_sync_t *sync, uint8_t packet[32])
 }
 int ntp_sync_process_packet(ntp_sync_t *sync, const uint8_t *data, size_t len)
 {
-    if (!sync || !data || len < 32 || (data[0] >> 6) != 2 ||
-        (data[1] & 0x7f) != 0x53 || !sync->request_pending)
+    if (!sync || !data || len < 32 || (data[0] >> 6) != 2 || (data[1] & 0x7f) != 0x53 ||
+        !sync->request_pending)
         return -1;
     uint64_t now = os_time_us();
     ntp_timestamp_t origin = read_time(data + 8);
-    if (origin.seconds != sync->request_time.seconds || origin.fraction != sync->request_time.fraction)
+    if (origin.seconds != sync->request_time.seconds ||
+        origin.fraction != sync->request_time.fraction)
         return -1;
     ntp_timestamp_t receive = read_time(data + 16), transmit = read_time(data + 24);
     int64_t processing = ntp_sync_diff_us(receive, transmit);
@@ -74,9 +78,8 @@ int ntp_sync_process_packet(ntp_sync_t *sync, const uint8_t *data, size_t len)
         return -1;
     if (rtt < 0)
         rtt = 0;
-    int64_t offset = (ntp_sync_diff_us(origin, receive) +
-                      ntp_sync_diff_us(from_us(now), transmit)) /
-                     2;
+    int64_t offset =
+        (ntp_sync_diff_us(origin, receive) + ntp_sync_diff_us(from_us(now), transmit)) / 2;
     sync->request_pending = 0;
     ++sync->samples;
     /* Prefer low-delay exchanges. Refresh the reference to follow slow clock drift. */
@@ -106,8 +109,7 @@ int ntp_sync_reply(const uint8_t *request, size_t len, uint8_t reply[32])
 }
 int ntp_sync_control(ntp_sync_t *sync, const uint8_t *data, size_t len, uint32_t rate)
 {
-    if (!sync || !data || len < 20 || (data[0] >> 6) != 2 ||
-        (data[1] & 0x7f) != 0x54 || !rate)
+    if (!sync || !data || len < 20 || (data[0] >> 6) != 2 || (data[1] & 0x7f) != 0x54 || !rate)
         return -1;
     uint32_t playing = read32(data + 4), sending = read32(data + 16);
     uint32_t latency = sending - playing;
@@ -125,8 +127,8 @@ ntp_timestamp_t ntp_sync_rtp_to_ntp(ntp_sync_t *sync, uint32_t timestamp, uint32
         return ntp_sync_now();
     int64_t delta = (int64_t)(int32_t)(timestamp - sync->rtp_base) * 1000000 / rate;
     int64_t seconds = delta / 1000000;
-    int64_t fraction = (int64_t)sync->ntp_base.fraction +
-                       (delta % 1000000) * INT64_C(4294967296) / 1000000;
+    int64_t fraction =
+        (int64_t)sync->ntp_base.fraction + (delta % 1000000) * INT64_C(4294967296) / 1000000;
     if (fraction < 0)
     {
         fraction += INT64_C(4294967296);
@@ -149,7 +151,10 @@ int ntp_sync_deadline(ntp_sync_t *sync, uint32_t timestamp, uint32_t rate, uint6
     *local_us = (uint64_t)((int64_t)now + delta);
     return 0;
 }
-int64_t ntp_sync_get_offset_us(ntp_sync_t *sync) { return sync ? sync->clock_offset_us : 0; }
+int64_t ntp_sync_get_offset_us(ntp_sync_t *sync)
+{
+    return sync ? sync->clock_offset_us : 0;
+}
 void ntp_sync_deinit(ntp_sync_t *sync)
 {
     if (sync)

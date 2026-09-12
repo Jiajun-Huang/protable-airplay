@@ -1,8 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
-#include "server.h"
 #include "net.h"
 #include "os.h"
-#include "log.h"
+#include "service/server.h"
+#include "util/log.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -47,8 +47,7 @@ int main(int argc, char **argv)
     int result = 1;
 
     if ((argc != 3 && argc != 4) || strlen(argv[1]) >= sizeof(config.local_ip) ||
-        strlen(argv[2]) != 12 ||
-        (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
+        strlen(argv[2]) != 12 || (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
     {
         LOG_ERROR("main", "Usage: %s IPv4 MAC_HEX [NAME]\n", argv[0]);
         return 1;
@@ -58,8 +57,7 @@ int main(int argc, char **argv)
     strcpy(config.device_name, argc == 4 ? argv[3] : AIRPLAY_DEVICE_NAME);
     action.sa_handler = handle_signal;
     sigemptyset(&action.sa_mask);
-    if (sigaction(SIGINT, &action, NULL) != 0 ||
-        sigaction(SIGTERM, &action, NULL) != 0)
+    if (sigaction(SIGINT, &action, NULL) != 0 || sigaction(SIGTERM, &action, NULL) != 0)
     {
         LOG_ERROR("main", "Cannot register stop handlers.\n");
         return 1;
@@ -75,8 +73,11 @@ int main(int argc, char **argv)
         net_deinit();
         return 1;
     }
-    LOG_INFO("main", "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
-             config.device_name, config.local_ip, config.local_mac_hex);
+    LOG_INFO("main",
+             "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
+             config.device_name,
+             config.local_ip,
+             config.local_mac_hex);
     for (started = 0; started < 3; ++started)
     {
         if (pthread_create(&threads[started], NULL, entries[started], &server) != 0)

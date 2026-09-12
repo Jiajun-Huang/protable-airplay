@@ -1,19 +1,21 @@
-#include "audio_pipeline.h"
-#include "alac_decoder.h"
-#include "crypto.h"
-#include "log.h"
-#include "ntp_sync.h"
+#include "audio/audio_pipeline.h"
+#include "codec/alac_decoder.h"
+#include "crypto/crypto.h"
 #include "os.h"
+#include "sync/ntp_sync.h"
+#include "util/log.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 /**
  * @brief Decode ALAC packet using real decoder
  */
 static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
-                                      const uint8_t *payload, size_t payload_len,
-                                      int16_t *output, size_t *output_samples)
+                                      const uint8_t *payload,
+                                      size_t payload_len,
+                                      int16_t *output,
+                                      size_t *output_samples)
 {
     if (!pipeline || !payload || !output || !output_samples)
         return -1;
@@ -30,12 +32,15 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
 
         if (payload_len > sizeof(decrypted_buffer))
         {
-            LOG_ERROR("pipeline", "Encrypted payload too large: %zu > %zu\n",
-                      payload_len, sizeof(decrypted_buffer));
+            LOG_ERROR("pipeline",
+                      "Encrypted payload too large: %zu > %zu\n",
+                      payload_len,
+                      sizeof(decrypted_buffer));
             return -1;
         }
 
-        if (crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer, encrypted_len) == 0)
+        if (crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer, encrypted_len) ==
+            0)
         {
             if (payload_len > encrypted_len)
             {
@@ -58,8 +63,10 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
     if (pipeline->alac_decoder.frame_length > 0)
     {
         result = alac_decoder_decode_frame(&pipeline->alac_decoder,
-                                           decode_input, payload_len,
-                                           output, output_samples,
+                                           decode_input,
+                                           payload_len,
+                                           output,
+                                           output_samples,
                                            MAX_AUDIO_BUFFER_SAMPLES);
     }
 
@@ -70,8 +77,10 @@ static int audio_pipeline_decode_alac(audio_pipeline_t *pipeline,
  * @brief Decode PCM (L16) RTP payload to native int16 samples
  */
 static int audio_pipeline_decode_pcm(audio_pipeline_t *pipeline,
-                                     const uint8_t *payload, size_t payload_len,
-                                     int16_t *output, size_t *output_samples)
+                                     const uint8_t *payload,
+                                     size_t payload_len,
+                                     int16_t *output,
+                                     size_t *output_samples)
 {
     if (!pipeline || !payload || !output || !output_samples)
         return -1;
@@ -88,7 +97,8 @@ static int audio_pipeline_decode_pcm(audio_pipeline_t *pipeline,
         if (payload_len > sizeof(decrypted_buffer))
             return -1;
 
-        if (crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer, encrypted_len) != 0)
+        if (crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer, encrypted_len) !=
+            0)
             return -1;
 
         if (payload_len > encrypted_len)
@@ -117,19 +127,16 @@ static int audio_pipeline_decode_pcm(audio_pipeline_t *pipeline,
     return 0;
 }
 
-static int audio_pipeline_read_bits(const uint8_t *data, size_t bit_length,
-                                    size_t *bit_offset, unsigned count,
-                                    uint32_t *value)
+static int audio_pipeline_read_bits(
+    const uint8_t *data, size_t bit_length, size_t *bit_offset, unsigned count, uint32_t *value)
 {
     uint32_t result = 0;
-    if (!data || !bit_offset || !value || count > 24 ||
-        *bit_offset > bit_length || count > bit_length - *bit_offset)
+    if (!data || !bit_offset || !value || count > 24 || *bit_offset > bit_length ||
+        count > bit_length - *bit_offset)
         return -1;
     for (unsigned i = 0; i < count; ++i)
     {
-        result = (result << 1) | ((data[*bit_offset / 8] >>
-                                   (7 - (*bit_offset % 8))) &
-                                  1U);
+        result = (result << 1) | ((data[*bit_offset / 8] >> (7 - (*bit_offset % 8))) & 1U);
         ++*bit_offset;
     }
     *value = result;
@@ -137,8 +144,10 @@ static int audio_pipeline_read_bits(const uint8_t *data, size_t bit_length,
 }
 
 static int audio_pipeline_decode_aac(audio_pipeline_t *pipeline,
-                                     const uint8_t *payload, size_t payload_len,
-                                     int16_t *output, size_t *output_samples)
+                                     const uint8_t *payload,
+                                     size_t payload_len,
+                                     int16_t *output,
+                                     size_t *output_samples)
 {
     uint8_t decrypted_buffer[RTP_BUFFER_SIZE];
     const uint8_t *input = payload;
@@ -150,17 +159,22 @@ static int audio_pipeline_decode_aac(audio_pipeline_t *pipeline,
         !pipeline->aac_decoder.impl)
         return -1;
     if (pipeline->session.stream_type)
-        return aac_decoder_decode(&pipeline->aac_decoder, payload, payload_len, output,
-                                  MAX_AUDIO_BUFFER_SAMPLES, output_samples);
+        return aac_decoder_decode(&pipeline->aac_decoder,
+                                  payload,
+                                  payload_len,
+                                  output,
+                                  MAX_AUDIO_BUFFER_SAMPLES,
+                                  output_samples);
     if (pipeline->session.has_encryption)
     {
         size_t encrypted_len = (payload_len / 16) * 16;
         if (payload_len > sizeof(decrypted_buffer) ||
-            crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer,
-                               encrypted_len) != 0)
+            crypto_aes_decrypt(&pipeline->aes_context, payload, decrypted_buffer, encrypted_len) !=
+                0)
             return -1;
         if (payload_len > encrypted_len)
-            memcpy(decrypted_buffer + encrypted_len, payload + encrypted_len,
+            memcpy(decrypted_buffer + encrypted_len,
+                   payload + encrypted_len,
                    payload_len - encrypted_len);
         input = decrypted_buffer;
     }
@@ -175,25 +189,32 @@ static int audio_pipeline_decode_aac(audio_pipeline_t *pipeline,
     size_t frames_len = input_len - 2 - header_bytes;
     while (bit_offset < header_bit_length)
     {
-        if (audio_pipeline_read_bits(headers, header_bit_length, &bit_offset,
+        if (audio_pipeline_read_bits(headers,
+                                     header_bit_length,
+                                     &bit_offset,
                                      pipeline->session.aac_size_length,
                                      &frame_size) != 0 ||
-            audio_pipeline_read_bits(headers, header_bit_length, &bit_offset,
+            audio_pipeline_read_bits(headers,
+                                     header_bit_length,
+                                     &bit_offset,
                                      pipeline->session.aac_index_length,
                                      &ignored) != 0 ||
-            frame_size > frames_len - frame_offset ||
-            output_offset >= MAX_AUDIO_BUFFER_SAMPLES)
+            frame_size > frames_len - frame_offset || output_offset >= MAX_AUDIO_BUFFER_SAMPLES)
             return -1;
         size_t decoded = 0;
-        if (aac_decoder_decode(&pipeline->aac_decoder, frames + frame_offset,
-                               frame_size, output + output_offset,
+        if (aac_decoder_decode(&pipeline->aac_decoder,
+                               frames + frame_offset,
+                               frame_size,
+                               output + output_offset,
                                MAX_AUDIO_BUFFER_SAMPLES - output_offset,
                                &decoded) != 0)
             return -1;
         frame_offset += frame_size;
         output_offset += decoded;
         if (bit_offset < header_bit_length &&
-            audio_pipeline_read_bits(headers, header_bit_length, &bit_offset,
+            audio_pipeline_read_bits(headers,
+                                     header_bit_length,
+                                     &bit_offset,
                                      pipeline->session.aac_index_delta_length,
                                      &ignored) != 0)
             return -1;
@@ -222,7 +243,9 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
     {
         static int logged_state = 0;
         if (!logged_state++)
-            LOG_WARN("pipeline", "RTP audio callback but pipeline not PLAYING (state=%d)\n", pipeline->state);
+            LOG_WARN("pipeline",
+                     "RTP audio callback but pipeline not PLAYING (state=%d)\n",
+                     pipeline->state);
         return;
     }
     if (packet->header.payload_type != pipeline->session.payload_type)
@@ -251,34 +274,42 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
 
     if (pipeline->session.codec == SDP_CODEC_ALAC)
     {
-        if (audio_pipeline_decode_alac(pipeline, packet->payload, packet->payload_len,
-                                       decoded_samples, &decoded_count) < 0)
+        if (audio_pipeline_decode_alac(
+                pipeline, packet->payload, packet->payload_len, decoded_samples, &decoded_count) <
+            0)
         {
             ++pipeline->decode_errors;
             if (pipeline->decode_errors <= 3 || pipeline->decode_errors % 100 == 0)
-                LOG_ERROR("audio", "ALAC rejected: seq=%u bytes=%zu encrypted=%d errors=%u\n",
-                          packet->header.sequence, packet->payload_len,
-                          pipeline->session.has_encryption, pipeline->decode_errors);
+                LOG_ERROR("audio",
+                          "ALAC rejected: seq=%u bytes=%zu encrypted=%d errors=%u\n",
+                          packet->header.sequence,
+                          packet->payload_len,
+                          pipeline->session.has_encryption,
+                          pipeline->decode_errors);
             return;
         }
     }
     else if (pipeline->session.codec == SDP_CODEC_PCM)
     {
-        if (audio_pipeline_decode_pcm(pipeline, packet->payload, packet->payload_len,
-                                      decoded_samples, &decoded_count) < 0)
+        if (audio_pipeline_decode_pcm(
+                pipeline, packet->payload, packet->payload_len, decoded_samples, &decoded_count) <
+            0)
         {
             return;
         }
     }
     else if (pipeline->session.codec == SDP_CODEC_AAC)
     {
-        if (audio_pipeline_decode_aac(pipeline, packet->payload, packet->payload_len,
-                                      decoded_samples, &decoded_count) < 0)
+        if (audio_pipeline_decode_aac(
+                pipeline, packet->payload, packet->payload_len, decoded_samples, &decoded_count) <
+            0)
         {
             ++pipeline->decode_errors;
             if (pipeline->decode_errors <= 3 || pipeline->decode_errors % 100 == 0)
-                LOG_ERROR("audio", "AAC rejected: seq=%u bytes=%zu errors=%u\n",
-                          packet->header.sequence, packet->payload_len,
+                LOG_ERROR("audio",
+                          "AAC rejected: seq=%u bytes=%zu errors=%u\n",
+                          packet->header.sequence,
+                          packet->payload_len,
                           pipeline->decode_errors);
             return;
         }
@@ -305,9 +336,16 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
             ++pipeline->nonzero_packets;
         if (pipeline->decoded_packets++ == 0 || (peak && pipeline->nonzero_packets == 1))
         {
-            LOG_DEBUG("audio", "First decoded packet: seq=%u pt=%u bytes=%zu samples=%zu channels=%u peak=%d encrypted=%d\n",
-                      packet->header.sequence, packet->header.payload_type, packet->payload_len,
-                      decoded_count, pipeline->session.channels, peak, pipeline->session.has_encryption);
+            LOG_DEBUG("audio",
+                      "First decoded packet: seq=%u pt=%u bytes=%zu samples=%zu channels=%u "
+                      "peak=%d encrypted=%d\n",
+                      packet->header.sequence,
+                      packet->header.payload_type,
+                      packet->payload_len,
+                      decoded_count,
+                      pipeline->session.channels,
+                      peak,
+                      pipeline->session.has_encryption);
         }
         for (size_t i = 0; i < decoded_count; ++i)
             decoded_samples[i] = (int16_t)(decoded_samples[i] * pipeline->volume_linear);
@@ -317,11 +355,15 @@ static void audio_pipeline_decode_packet(const rtp_packet_t *packet, void *user_
     // Debug output every 1000 packets
     if (pipeline->packets_received % 1000 == 0)
     {
-        LOG_DEBUG("pipeline", "Played %u packets, gaps %u (%.2f%%), nonzero=%u queued=%u late=%u overflow=%u\n",
-                  pipeline->packets_received, pipeline->packets_lost,
+        LOG_DEBUG("pipeline",
+                  "Played %u packets, gaps %u (%.2f%%), nonzero=%u queued=%u late=%u overflow=%u\n",
+                  pipeline->packets_received,
+                  pipeline->packets_lost,
                   (pipeline->packets_lost * 100.0f) / pipeline->packets_received,
-                  pipeline->nonzero_packets, pipeline->playout.count,
-                  pipeline->late_packets, pipeline->queue_overflows);
+                  pipeline->nonzero_packets,
+                  pipeline->playout.count,
+                  pipeline->late_packets,
+                  pipeline->queue_overflows);
     }
 }
 
@@ -345,25 +387,36 @@ static void audio_pipeline_on_rtp_audio(const rtp_packet_t *packet, void *user_d
         }
         memcpy(wire + 12, packet->payload, packet->payload_len);
         if (crypto_airplay2_decrypt_rtp(pipeline->session.audio_key,
-                                        wire, packet->payload_len + 12, 12, packet->payload_len,
-                                        plaintext, sizeof(plaintext), &decoded.payload_len))
+                                        wire,
+                                        packet->payload_len + 12,
+                                        12,
+                                        packet->payload_len,
+                                        plaintext,
+                                        sizeof(plaintext),
+                                        &decoded.payload_len))
         {
             if (++pipeline->decode_errors <= 3)
-                LOG_ERROR("airplay2", "Audio authentication failed: seq=%u\n", packet->header.sequence);
+                LOG_ERROR(
+                    "airplay2", "Audio authentication failed: seq=%u\n", packet->header.sequence);
             return;
         }
         decoded.payload = plaintext;
     }
     int result = playout_push(&pipeline->playout, &decoded);
     if (result < 0 && ++pipeline->queue_overflows <= 3)
-        LOG_WARN("audio", "Playout capacity exceeded: queued=%u bytes=%zu\n",
-                 pipeline->playout.count, packet->payload_len);
+        LOG_WARN("audio",
+                 "Playout capacity exceeded: queued=%u bytes=%zu\n",
+                 pipeline->playout.count,
+                 packet->payload_len);
     if (result > 0 && !pipeline->first_arrival_us)
     {
         pipeline->first_arrival_us = os_time_us();
         pipeline->first_timestamp = packet->header.timestamp;
-        LOG_DEBUG("audio", "Buffering first RTP packet: seq=%u timestamp=%u bytes=%zu\n",
-                  packet->header.sequence, packet->header.timestamp, packet->payload_len);
+        LOG_DEBUG("audio",
+                  "Buffering first RTP packet: seq=%u timestamp=%u bytes=%zu\n",
+                  packet->header.sequence,
+                  packet->header.timestamp,
+                  packet->payload_len);
     }
 }
 
@@ -379,8 +432,10 @@ static void audio_pipeline_on_rtp_control(const uint8_t *data, size_t len, void 
         if (pipeline->session.stream_type == 96 && !ptp_sync_anchor(&anchor, data, len))
         {
             if (!pipeline->anchor.valid || pipeline->anchor.clock_id != anchor.clock_id)
-                LOG_DEBUG("ptp", "Realtime anchor RTP=%u clock=%016llx\n",
-                          anchor.rtp_time, (unsigned long long)anchor.clock_id);
+                LOG_DEBUG("ptp",
+                          "Realtime anchor RTP=%u clock=%016llx\n",
+                          anchor.rtp_time,
+                          (unsigned long long)anchor.clock_id);
             pipeline->anchor = anchor;
             ptp_sync_set_clock(&pipeline->ptp, anchor.clock_id);
         }
@@ -388,18 +443,25 @@ static void audio_pipeline_on_rtp_control(const uint8_t *data, size_t len, void 
     }
     uint32_t old_latency = pipeline->ntp_sync.latency_frames;
     int had_anchor = pipeline->ntp_sync.anchor_valid;
-    uint32_t rate = pipeline->session.sample_rate ? pipeline->session.sample_rate : AIRPLAY_DEFAULT_SAMPLE_RATE;
+    uint32_t rate =
+        pipeline->session.sample_rate ? pipeline->session.sample_rate : AIRPLAY_DEFAULT_SAMPLE_RATE;
     if (ntp_sync_control(&pipeline->ntp_sync, data, len, rate) == 0 &&
         (!had_anchor || old_latency != pipeline->ntp_sync.latency_frames))
-        LOG_DEBUG("sync", "RTP anchor=%u sender latency=%u frames (%.1f ms), clock_ready=%d\n",
-                  pipeline->ntp_sync.rtp_base, pipeline->ntp_sync.latency_frames,
-                  pipeline->ntp_sync.latency_frames * 1000.0 / rate, pipeline->ntp_sync.synchronized);
+        LOG_DEBUG("sync",
+                  "RTP anchor=%u sender latency=%u frames (%.1f ms), clock_ready=%d\n",
+                  pipeline->ntp_sync.rtp_base,
+                  pipeline->ntp_sync.latency_frames,
+                  pipeline->ntp_sync.latency_frames * 1000.0 / rate,
+                  pipeline->ntp_sync.synchronized);
 }
 
 /**
  * @brief RTP timing callback - receives timing/sync packets
  */
-static void audio_pipeline_on_rtp_timing(const uint8_t *data, size_t len, const net_addr_t *peer, void *user_data)
+static void audio_pipeline_on_rtp_timing(const uint8_t *data,
+                                         size_t len,
+                                         const net_addr_t *peer,
+                                         void *user_data)
 {
     audio_pipeline_t *pipeline = (audio_pipeline_t *)user_data;
     if (!pipeline || !pipeline->ntp_sync_initialized)
@@ -415,8 +477,10 @@ static void audio_pipeline_on_rtp_timing(const uint8_t *data, size_t len, const 
         return;
     int had_clock = pipeline->ntp_sync.synchronized;
     if (ntp_sync_process_packet(&pipeline->ntp_sync, data, len) == 0 && !had_clock)
-        LOG_DEBUG("sync", "Sender clock ready: RTT=%lld us offset=%lld us\n",
-                  (long long)pipeline->ntp_sync.rtt_us, (long long)pipeline->ntp_sync.clock_offset_us);
+        LOG_DEBUG("sync",
+                  "Sender clock ready: RTT=%lld us offset=%lld us\n",
+                  (long long)pipeline->ntp_sync.rtt_us,
+                  (long long)pipeline->ntp_sync.clock_offset_us);
 }
 
 int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_config_t *config)
@@ -478,8 +542,11 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
         pipeline->ntp_sync_initialized = 0;
         return -1;
     }
-    LOG_INFO("pipeline", "Created audio pipeline (ports: %u/%u/%u)\n",
-             config->audio_port, config->control_port, config->timing_port);
+    LOG_INFO("pipeline",
+             "Created audio pipeline (ports: %u/%u/%u)\n",
+             config->audio_port,
+             config->control_port,
+             config->timing_port);
 
     return 0;
 }
@@ -500,10 +567,10 @@ void audio_pipeline_set_start(audio_pipeline_t *pipeline, uint32_t timestamp, in
 
 int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *session)
 {
-    if (!pipeline || !session || session->sample_rate == 0 ||
-        session->channels == 0 || session->channels > 2 || session->bits_per_sample != 16 ||
-        !session->frames_per_packet ||
-        (session->codec != SDP_CODEC_AAC && session->frames_per_packet > ALAC_MAX_SAMPLES_PER_FRAME) ||
+    if (!pipeline || !session || session->sample_rate == 0 || session->channels == 0 ||
+        session->channels > 2 || session->bits_per_sample != 16 || !session->frames_per_packet ||
+        (session->codec != SDP_CODEC_AAC &&
+         session->frames_per_packet > ALAC_MAX_SAMPLES_PER_FRAME) ||
         (size_t)session->frames_per_packet * session->channels > MAX_AUDIO_BUFFER_SAMPLES)
         return -1;
 
@@ -520,9 +587,13 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
     impl->configured = 0;
     impl->state = AUDIO_PIPELINE_STOPPED;
 
-    LOG_INFO("pipeline", "Configured: codec=%d, %uHz, %u-ch, %u-bit, %u frames/pkt\n",
-             session->codec, session->sample_rate, session->channels,
-             session->bits_per_sample, session->frames_per_packet);
+    LOG_INFO("pipeline",
+             "Configured: codec=%d, %uHz, %u-ch, %u-bit, %u frames/pkt\n",
+             session->codec,
+             session->sample_rate,
+             session->channels,
+             session->bits_per_sample,
+             session->frames_per_packet);
 
     if (session->codec == SDP_CODEC_UNKNOWN)
     {
@@ -532,23 +603,27 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
         LOG_WARN("pipeline", "Unknown codec in SDP; falling back to ALAC\n");
     }
 
-    if (impl->session.codec == SDP_CODEC_AAC &&
-        aac_decoder_init(&impl->aac_decoder, session->aac_config,
-                         session->aac_config_len, (uint8_t)session->channels,
-                         session->sample_rate) != 0)
+    if (impl->session.codec == SDP_CODEC_AAC && aac_decoder_init(&impl->aac_decoder,
+                                                                 session->aac_config,
+                                                                 session->aac_config_len,
+                                                                 (uint8_t)session->channels,
+                                                                 session->sample_rate) != 0)
         return -1;
 
     // Create ALAC decoder if needed
     if (impl->session.codec == SDP_CODEC_ALAC && impl->alac_decoder.frame_length == 0)
     {
-        LOG_DEBUG("pipeline", "ALAC SDP: frames_per_packet=%u bit_depth=%u channels=%u rate=%u fmtp_count=%zu\n",
-                  session->frames_per_packet,
-                  session->bits_per_sample,
-                  session->channels,
-                  session->sample_rate,
-                  session->alac_fmtp_count);
+        LOG_DEBUG(
+            "pipeline",
+            "ALAC SDP: frames_per_packet=%u bit_depth=%u channels=%u rate=%u fmtp_count=%zu\n",
+            session->frames_per_packet,
+            session->bits_per_sample,
+            session->channels,
+            session->sample_rate,
+            session->alac_fmtp_count);
         if (alac_decoder_init(&impl->alac_decoder,
-                              session->alac_fmtp, session->alac_fmtp_count,
+                              session->alac_fmtp,
+                              session->alac_fmtp_count,
                               session->frames_per_packet,
                               (uint8_t)session->bits_per_sample,
                               (uint8_t)session->channels,
@@ -572,9 +647,8 @@ int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *se
         int have_key = 0;
         if (session->aes_key_encrypted_len > 0)
         {
-            if (crypto_rsa_decrypt_aes_key(session->aes_key_encrypted,
-                                           session->aes_key_encrypted_len,
-                                           aes_key) == 0)
+            if (crypto_rsa_decrypt_aes_key(
+                    session->aes_key_encrypted, session->aes_key_encrypted_len, aes_key) == 0)
             {
                 have_key = 1;
                 LOG_INFO("pipeline", "AES key decrypted via RSA\n");
@@ -686,11 +760,12 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
     {
         /* Stop reading before the compressed queue fills; TCP supplies back-pressure. */
         unsigned limit = impl->buffered.discarding ? 256 : 32;
-        for (unsigned i = 0; i < limit &&
-             (impl->buffered.discarding || impl->playout.count < AIRPLAY_PLAYOUT_PACKETS - 2); ++i)
+        for (unsigned i = 0; i < limit && (impl->buffered.discarding ||
+                                           impl->playout.count < AIRPLAY_PLAYOUT_PACKETS - 2);
+             ++i)
         {
-            int result = buffered_audio_poll(&impl->buffered, impl->timing_peer.ip,
-                                             audio_pipeline_on_rtp_audio, impl);
+            int result = buffered_audio_poll(
+                &impl->buffered, impl->timing_peer.ip, audio_pipeline_on_rtp_audio, impl);
             if (result < 0)
                 return -1;
             if (!result)
@@ -705,14 +780,21 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
         uint64_t now = os_time_us(), deadline;
         if (impl->session.stream_type)
         {
-            if (ptp_sync_deadline(&impl->ptp, &impl->anchor, queued->header.timestamp,
-                                  impl->session.sample_rate, impl->session.latency_frames, &deadline))
+            if (ptp_sync_deadline(&impl->ptp,
+                                  &impl->anchor,
+                                  queued->header.timestamp,
+                                  impl->session.sample_rate,
+                                  impl->session.latency_frames,
+                                  &deadline))
                 break;
         }
-        else if (ntp_sync_deadline(&impl->ntp_sync, queued->header.timestamp,
-                                   impl->session.sample_rate, &deadline) != 0)
+        else if (ntp_sync_deadline(&impl->ntp_sync,
+                                   queued->header.timestamp,
+                                   impl->session.sample_rate,
+                                   &deadline) != 0)
         {
-            /* Use arrival time to pace playback when sender clock synchronization is unavailable. */
+            /* Use arrival time to pace playback when sender clock synchronization is unavailable.
+             */
             if (impl->timing_peer.port && now - impl->first_arrival_us < 3000000)
                 break;
             if (!impl->fallback_logged)
@@ -721,8 +803,8 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
                 impl->fallback_logged = 1;
             }
             deadline = impl->first_arrival_us + 2000000 +
-                       (int64_t)(int32_t)(queued->header.timestamp - impl->first_timestamp) * 1000000 /
-                           impl->session.sample_rate;
+                       (int64_t)(int32_t)(queued->header.timestamp - impl->first_timestamp) *
+                           1000000 / impl->session.sample_rate;
         }
         /* Bound native output buffering even when the sender transmits seconds ahead. */
         if ((int64_t)(deadline - now) > 40000)
@@ -730,7 +812,8 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
         int delay = impl->output_delay_frames ? impl->output_delay_frames(impl->user_data) : 0;
         if (delay < 0)
             return -1;
-        int64_t early = (int64_t)(deadline - now) - (int64_t)delay * 1000000 / impl->session.sample_rate;
+        int64_t early =
+            (int64_t)(deadline - now) - (int64_t)delay * 1000000 / impl->session.sample_rate;
         if (early > 5000)
             break;
         if (early < -100000)

@@ -1,13 +1,17 @@
 #ifndef AIRPLAY_SERVER_H
 #define AIRPLAY_SERVER_H
 
-#include "airplay_config.h"
-#include "os.h"
-#include "audio.h"
-#include "audio_pipeline.h"
-#include "rtsp.h"
 #include "airplay/airplay_discovery.h"
+#include "airplay_config.h"
+#include "audio.h"
+#include "audio/audio_pipeline.h"
+#include "os.h"
+#include "protocol/rtsp.h"
 
+/* Top-level receiver service. It owns shared protocol state and exposes three
+ * blocking service entry points for platform-created threads or tasks. */
+
+/* Runtime identity selected from one network interface. */
 typedef struct
 {
     char local_ip[16];
@@ -36,19 +40,25 @@ typedef struct
     audio_pipeline_t pipeline;
     audio_device_t *audio;
     char deviceid_txt[32];
-    const char *raop_txt[1 + sizeof((const char *[]){AIRPLAY_RAOP_TXT_ENTRIES}) / sizeof(const char *)];
+    const char
+        *raop_txt[1 + sizeof((const char *[]){AIRPLAY_RAOP_TXT_ENTRIES}) / sizeof(const char *)];
 } airplay_server_t;
 
 /* Platform calls net_init first. All sockets open before init succeeds.
  * Start each of the three service functions exactly once after successful init. */
 int airplay_server_init(airplay_server_t *server, const airplay_config_t *config);
+/* Run the mDNS discovery loop until the server is stopped. */
 void airplay_mdns_main(void *server);
+/* Run the RTSP control loop until the server is stopped. */
 void airplay_rtsp_main(void *server);
+/* Run packet receive, synchronization, decode, and PCM output until stopped. */
 void airplay_audio_main(void *server);
 
 /* Thread-safe; service I/O uses finite timeouts so stop does not close live sockets. */
 void airplay_server_stop(airplay_server_t *server);
+/* Return nonzero after a stop request or fatal service failure. */
 int airplay_server_is_stopping(airplay_server_t *server);
+/* Return zero for a clean stop or -1 after a service failure. */
 int airplay_server_result(airplay_server_t *server);
 /* Join every started task, read result, then deinit; platform finally calls net_deinit. */
 void airplay_server_deinit(airplay_server_t *server);

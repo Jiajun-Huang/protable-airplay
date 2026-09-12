@@ -16,7 +16,14 @@ The shared core owns discovery, session control, decoding, and playback scheduli
 
 ```text
 airplay_config.h   Device identity, service ports, audio defaults, memory limits, task settings
-shared/            Common C services, protocols, decoding, and scheduling
+shared/airplay/    AirPlay 1 and AirPlay 2 discovery, control, pairing, and FairPlay
+shared/audio/      Audio receive pipeline, buffered transport, packet queue, and scheduling
+shared/codec/      ALAC and AAC decoder adapters
+shared/crypto/     Shared audio cryptography
+shared/protocol/   Binary plist, mDNS, RTP, RTSP, and SDP wire formats
+shared/service/    Top-level discovery, control, and audio service lifecycle
+shared/sync/       NTP and PTP clock mapping
+shared/util/       Logging and network-format helpers
 platform/net.h     TCP/UDP interface
 platform/os.h      Mutex, sleep, and UTC clock interface
 platform/audio.h   PCM output interface

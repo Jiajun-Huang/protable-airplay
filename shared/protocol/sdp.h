@@ -1,9 +1,9 @@
 #ifndef SDP_H
 #define SDP_H
 
-#include <stdint.h>
-#include <stddef.h>
 #include "airplay_config.h"
+#include <stddef.h>
+#include <stdint.h>
 
 /**
  * @brief SDP (Session Description Protocol) parser for AirPlay ANNOUNCE

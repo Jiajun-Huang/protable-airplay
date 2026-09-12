@@ -1,17 +1,33 @@
-#include "audio_pipeline.h"
+#include "audio/audio_pipeline.h"
+#include "fixtures/alac.h"
 #include "os.h"
-#include "log.h"
+#include "util/log.h"
+#include <mbedtls/chachapoly.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mbedtls/chachapoly.h>
-#include "fixtures/alac.h"
 
-#define CHECK(x) do { if (!(x)) { LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+#define CHECK(x)                                                                                   \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(x))                                                                                  \
+        {                                                                                          \
+            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            exit(1);                                                                               \
+        }                                                                                          \
+    } while (0)
 static uint64_t now = UINT64_C(1700000000000000);
-uint64_t os_time_us(void) { return now; }
+uint64_t os_time_us(void)
+{
+    return now;
+}
 static void put32(uint8_t *p, uint32_t n)
-{ p[0] = (uint8_t)(n >> 24); p[1] = (uint8_t)(n >> 16); p[2] = (uint8_t)(n >> 8); p[3] = (uint8_t)n; }
+{
+    p[0] = (uint8_t)(n >> 24);
+    p[1] = (uint8_t)(n >> 16);
+    p[2] = (uint8_t)(n >> 8);
+    p[3] = (uint8_t)n;
+}
 static void put_time(uint8_t *p, uint64_t local_us, int seconds_offset)
 {
     put32(p, (uint32_t)(local_us / 1000000 + 2208988800ULL + seconds_offset));
@@ -69,13 +85,16 @@ static void test_queue(void)
 {
     uint8_t bytes[8] = {0};
     rtp_packet_t packet = {.header = {.sequence = 65535, .timestamp = UINT32_MAX - 351},
-                           .payload = bytes, .payload_len = sizeof(bytes)};
+                           .payload = bytes,
+                           .payload_len = sizeof(bytes)};
     playout_reset(&queue);
     CHECK(playout_push(&queue, &packet) == 1);
     CHECK(playout_push(&queue, &packet) == 0);
-    packet.header.sequence = 0; packet.header.timestamp += 352;
+    packet.header.sequence = 0;
+    packet.header.timestamp += 352;
     CHECK(playout_push(&queue, &packet) == 1);
-    packet.header.sequence = 65534; packet.header.timestamp -= 704;
+    packet.header.sequence = 65534;
+    packet.header.timestamp -= 704;
     CHECK(playout_push(&queue, &packet) == 1);
     CHECK(playout_peek(&queue)->header.sequence == 65534);
     playout_pop(&queue, playout_peek(&queue));
@@ -91,7 +110,8 @@ static void test_queue(void)
     packet.header.timestamp = 352;
     CHECK(playout_push(&queue, &packet) == 1);
     playout_reset(&queue);
-    for (unsigned i = 0; i < AIRPLAY_PLAYOUT_PACKETS; ++i) {
+    for (unsigned i = 0; i < AIRPLAY_PLAYOUT_PACKETS; ++i)
+    {
         packet.header.sequence = (uint16_t)i;
         CHECK(playout_push(&queue, &packet) == 1);
     }
@@ -100,43 +120,106 @@ static void test_queue(void)
 }
 
 /* Deterministic transport and output: exercise the real receive callback and polling scheduler. */
-int net_udp_bind(net_socket_t *s, uint16_t port) { s->port = port; s->handle = port; return 0; }
-void net_close(net_socket_t *s) { s->handle = UINTPTR_MAX; }
+int net_udp_bind(net_socket_t *s, uint16_t port)
+{
+    s->port = port;
+    s->handle = port;
+    return 0;
+}
+void net_close(net_socket_t *s)
+{
+    s->handle = UINTPTR_MAX;
+}
 int net_tcp_listen(net_socket_t *s, const char *ip, uint16_t port)
-{ (void)ip; s->handle = port; s->port = port; return 0; }
+{
+    (void)ip;
+    s->handle = port;
+    s->port = port;
+    return 0;
+}
 int net_tcp_accept(net_socket_t *s, net_socket_t *c, net_addr_t *p, int timeout)
-{ (void)s; (void)c; (void)p; (void)timeout; return NET_TIMEOUT; }
+{
+    (void)s;
+    (void)c;
+    (void)p;
+    (void)timeout;
+    return NET_TIMEOUT;
+}
 int net_tcp_recv(net_socket_t *s, void *data, size_t size, int timeout)
-{ (void)s; (void)data; (void)size; (void)timeout; return NET_TIMEOUT; }
+{
+    (void)s;
+    (void)data;
+    (void)size;
+    (void)timeout;
+    return NET_TIMEOUT;
+}
 int net_udp_join(net_socket_t *s, const char *group, const char *ip)
-{ (void)s; (void)group; (void)ip; return 0; }
+{
+    (void)s;
+    (void)group;
+    (void)ip;
+    return 0;
+}
 int net_wait(const net_socket_t *s, size_t n, uint8_t *ready, int timeout)
-{ (void)s; (void)timeout; memset(ready, 0, n); return 0; }
+{
+    (void)s;
+    (void)timeout;
+    memset(ready, 0, n);
+    return 0;
+}
 int net_udp_recv(net_socket_t *s, void *b, size_t n, net_addr_t *p, int t)
-{ (void)s; (void)b; (void)n; (void)p; (void)t; return NET_TIMEOUT; }
+{
+    (void)s;
+    (void)b;
+    (void)n;
+    (void)p;
+    (void)t;
+    return NET_TIMEOUT;
+}
 int net_udp_send(net_socket_t *s, const void *b, size_t n, const net_addr_t *p)
-{ (void)s; (void)b; (void)p; return (int)n; }
+{
+    (void)s;
+    (void)b;
+    (void)p;
+    return (int)n;
+}
 static audio_pipeline_t pipeline;
 static unsigned writes;
 static int output_delay;
 static void output(const int16_t *samples, size_t count, void *arg)
-{ (void)arg; CHECK(count == 4 && samples[0] == 1000 && samples[1] == -1000); ++writes; }
-static int delay(void *arg) { (void)arg; return output_delay; }
+{
+    (void)arg;
+    CHECK(count == 4 && samples[0] == 1000 && samples[1] == -1000);
+    ++writes;
+}
+static int delay(void *arg)
+{
+    (void)arg;
+    return output_delay;
+}
 static void test_scheduled_output(void)
 {
-    audio_pipeline_config_t config = {.audio_port = 6000, .control_port = 6001, .timing_port = 6002,
-        .on_audio_data = output, .output_delay_frames = delay};
-    sdp_session_t session = {.codec = SDP_CODEC_PCM, .sample_rate = 44100, .channels = 2,
-        .bits_per_sample = 16, .frames_per_packet = 2, .payload_type = 96};
+    audio_pipeline_config_t config = {.audio_port = 6000,
+                                      .control_port = 6001,
+                                      .timing_port = 6002,
+                                      .on_audio_data = output,
+                                      .output_delay_frames = delay};
+    sdp_session_t session = {.codec = SDP_CODEC_PCM,
+                             .sample_rate = 44100,
+                             .channels = 2,
+                             .bits_per_sample = 16,
+                             .frames_per_packet = 2,
+                             .payload_type = 96};
     CHECK(audio_pipeline_create(&pipeline, &config) == 0);
     CHECK(audio_pipeline_configure(&pipeline, &session) == 0);
     CHECK(audio_pipeline_start(&pipeline) == 0);
     exchange(&pipeline.ntp_sync, 5);
     uint64_t start = now;
     anchor(&pipeline.ntp_sync, 1000, now, 5);
-    uint8_t pcm[] = {0x03,0xe8,0xfc,0x18,0,0,0,0};
+    uint8_t pcm[] = {0x03, 0xe8, 0xfc, 0x18, 0, 0, 0, 0};
     rtp_packet_t packet = {.header = {.sequence = 10, .timestamp = 89200, .payload_type = 96},
-        .payload = pcm, .payload_len = sizeof(pcm)};
+                           .payload = pcm,
+                           .payload_len = sizeof(pcm)};
     pipeline.rtp.config.audio_cb(&packet, &pipeline);
     CHECK(audio_pipeline_poll(&pipeline, 0) == 0 && writes == 0);
     now = start + 1900000;
@@ -148,7 +231,8 @@ static void test_scheduled_output(void)
     CHECK(audio_pipeline_poll(&pipeline, 0) == 0 && writes == 1);
     pipeline.rtp.config.audio_cb(&packet, &pipeline); /* duplicate after playback */
     CHECK(audio_pipeline_poll(&pipeline, 0) == 0 && writes == 1);
-    ++packet.header.sequence; packet.header.timestamp += 352;
+    ++packet.header.sequence;
+    packet.header.timestamp += 352;
     pipeline.rtp.config.audio_cb(&packet, &pipeline);
     now = start + 2500000;
     CHECK(audio_pipeline_poll(&pipeline, 0) == 0 && writes == 1 && pipeline.late_packets == 1);
@@ -167,27 +251,45 @@ static void alac_output(const int16_t *samples, size_t count, void *arg)
 
 static void test_airplay2_scheduled_alac(void)
 {
-    audio_pipeline_config_t config = {.audio_port = 6000, .control_port = 6001,
-        .timing_port = 6002, .local_ip = "192.0.2.10", .on_audio_data = alac_output};
-    sdp_session_t session = {.codec = SDP_CODEC_ALAC, .sample_rate = 44100, .channels = 2,
-        .bits_per_sample = 16, .frames_per_packet = 352, .payload_type = 96, .stream_type = 96};
-    for (unsigned i = 0; i < 32; ++i) session.audio_key[i] = (uint8_t)i;
+    audio_pipeline_config_t config = {.audio_port = 6000,
+                                      .control_port = 6001,
+                                      .timing_port = 6002,
+                                      .local_ip = "192.0.2.10",
+                                      .on_audio_data = alac_output};
+    sdp_session_t session = {.codec = SDP_CODEC_ALAC,
+                             .sample_rate = 44100,
+                             .channels = 2,
+                             .bits_per_sample = 16,
+                             .frames_per_packet = 352,
+                             .payload_type = 96,
+                             .stream_type = 96};
+    for (unsigned i = 0; i < 32; ++i)
+        session.audio_key[i] = (uint8_t)i;
     writes = 0;
     CHECK(!audio_pipeline_create(&pipeline, &config));
     CHECK(!audio_pipeline_configure(&pipeline, &session));
     CHECK(!audio_pipeline_start(&pipeline));
     uint8_t payload[sizeof(tone_packet) + 24], nonce[12] = {0}, aad[8];
     nonce[4] = 1;
-    put32(aad, 1000); put32(aad + 4, 42);
+    put32(aad, 1000);
+    put32(aad + 4, 42);
     mbedtls_chachapoly_context cipher;
     mbedtls_chachapoly_init(&cipher);
     CHECK(!mbedtls_chachapoly_setkey(&cipher, session.audio_key));
-    CHECK(!mbedtls_chachapoly_encrypt_and_tag(&cipher, sizeof(tone_packet), nonce,
-        aad, sizeof(aad), tone_packet, payload, payload + sizeof(tone_packet)));
+    CHECK(!mbedtls_chachapoly_encrypt_and_tag(&cipher,
+                                              sizeof(tone_packet),
+                                              nonce,
+                                              aad,
+                                              sizeof(aad),
+                                              tone_packet,
+                                              payload,
+                                              payload + sizeof(tone_packet)));
     memcpy(payload + sizeof(tone_packet) + 16, nonce + 4, 8);
     mbedtls_chachapoly_free(&cipher);
-    rtp_packet_t packet = {.header = {.sequence = 10, .timestamp = 1000,
-        .ssrc = 42, .payload_type = 96}, .payload = payload, .payload_len = sizeof(payload)};
+    rtp_packet_t packet = {
+        .header = {.sequence = 10, .timestamp = 1000, .ssrc = 42, .payload_type = 96},
+        .payload = payload,
+        .payload_len = sizeof(payload)};
     payload[0] ^= 1;
     pipeline.rtp.config.audio_cb(&packet, &pipeline);
     CHECK(pipeline.decode_errors == 1 && pipeline.playout.count == 0);
@@ -202,7 +304,8 @@ static void test_airplay2_scheduled_alac(void)
     put32(control + 12, (uint32_t)network_ns);
     put32(control + 16, 1000 + 88200);
     put32(control + 24, 42);
-    for (size_t n = 0; n < sizeof(control); ++n) {
+    for (size_t n = 0; n < sizeof(control); ++n)
+    {
         pipeline.rtp.config.control_cb(control, n, &pipeline);
         CHECK(!pipeline.anchor.valid);
     }
@@ -210,7 +313,8 @@ static void test_airplay2_scheduled_alac(void)
     CHECK(pipeline.anchor.rtp_time == 1000 && pipeline.anchor.clock_id == 42);
     CHECK(pipeline.anchor.network_us == now + 5100000 && pipeline.ptp.clock_id == 42);
     pipeline.ptp.ready = 1;
-    pipeline.ptp.updated_us = now; pipeline.ptp.offset_us = 5000000;
+    pipeline.ptp.updated_us = now;
+    pipeline.ptp.offset_us = 5000000;
     CHECK(!audio_pipeline_poll(&pipeline, 0) && writes == 0);
     now += 100000;
     pipeline.anchor.playing = 0;
@@ -223,7 +327,10 @@ static void test_airplay2_scheduled_alac(void)
 
 int main(void)
 {
-    test_clock(); test_queue(); test_scheduled_output(); test_airplay2_scheduled_alac();
+    test_clock();
+    test_queue();
+    test_scheduled_output();
+    test_airplay2_scheduled_alac();
     LOG_INFO("test", "Sender timing, RTP ordering, FLUSH and scheduled output passed\n");
     return 0;
 }

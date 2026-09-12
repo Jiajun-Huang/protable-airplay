@@ -1,15 +1,16 @@
-#include "alac_decoder.h"
-#include "log.h"
+#include "codec/alac_decoder.h"
+#include "util/log.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "alac.h"
+#include "codec/alac.h"
 
 int alac_decoder_init(alac_decoder_t *decoder,
-                      const uint32_t *fmtp, size_t fmtp_count,
+                      const uint32_t *fmtp,
+                      size_t fmtp_count,
                       uint32_t frames_per_packet,
                       uint8_t bit_depth,
                       uint8_t channels,
@@ -20,7 +21,8 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     memset(decoder, 0, sizeof(*decoder));
 
-    decoder->frame_length = frames_per_packet ? frames_per_packet : AIRPLAY_DEFAULT_FRAMES_PER_PACKET;
+    decoder->frame_length =
+        frames_per_packet ? frames_per_packet : AIRPLAY_DEFAULT_FRAMES_PER_PACKET;
     if (decoder->frame_length > ALAC_MAX_SAMPLES_PER_FRAME)
         return -1;
 
@@ -43,8 +45,8 @@ int alac_decoder_init(alac_decoder_t *decoder,
         char values[12 * 11 + 1] = {0};
         size_t length = 0;
         for (size_t i = 0; i < decoder->fmtp_count; i++)
-            length += (size_t)snprintf(values + length, sizeof(values) - length,
-                                       " %u", decoder->fmtp[i]);
+            length +=
+                (size_t)snprintf(values + length, sizeof(values) - length, " %u", decoder->fmtp[i]);
         LOG_DEBUG("alac", "fmtp_count=%zu values:%s\n", decoder->fmtp_count, values);
     }
 
@@ -70,9 +72,15 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     decoder->impl = (void *)alac;
 
-    LOG_INFO("alac", "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
-             decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
-    LOG_DEBUG("alac", "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
+    LOG_INFO("alac",
+             "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
+             decoder->frame_length,
+             decoder->bit_depth,
+             decoder->channels,
+             decoder->sample_rate);
+    LOG_DEBUG("alac",
+              "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u "
+              "maxFrameBytes=%u avgBitRate=%u rate=%u\n",
               alac->setinfo_max_samples_per_frame,
               alac->setinfo_7a,
               alac->setinfo_sample_size,
@@ -89,8 +97,11 @@ int alac_decoder_init(alac_decoder_t *decoder,
 }
 
 int alac_decoder_decode_frame(alac_decoder_t *decoder,
-                              const uint8_t *input, size_t input_len,
-                              int16_t *output, size_t *output_samples, size_t max_output_samples)
+                              const uint8_t *input,
+                              size_t input_len,
+                              int16_t *output,
+                              size_t *output_samples,
+                              size_t max_output_samples)
 {
     if (!decoder || !decoder->impl || !input || !output || !output_samples || input_len == 0)
         return -1;
