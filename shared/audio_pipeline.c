@@ -685,8 +685,9 @@ int audio_pipeline_poll(audio_pipeline_t *pipeline, int timeout_ms)
     if (impl->session.stream_type == 103 && impl->state == AUDIO_PIPELINE_PLAYING)
     {
         /* Stop reading before the compressed queue fills; TCP supplies back-pressure. */
-        for (unsigned i = 0; i < 32 &&
-             impl->playout.count < AIRPLAY_PLAYOUT_PACKETS - 2; ++i)
+        unsigned limit = impl->buffered.discarding ? 256 : 32;
+        for (unsigned i = 0; i < limit &&
+             (impl->buffered.discarding || impl->playout.count < AIRPLAY_PLAYOUT_PACKETS - 2); ++i)
         {
             int result = buffered_audio_poll(&impl->buffered, impl->timing_peer.ip,
                                              audio_pipeline_on_rtp_audio, impl);

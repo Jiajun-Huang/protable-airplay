@@ -1,4 +1,6 @@
 #include "rtsp.h"
+#include "airplay/airplay2.h"
+#include "bplist.h"
 
 #include "log.h"
 #include <stdio.h>
@@ -544,6 +546,31 @@ static void test_fairplay_dispatch_and_reconnect(void)
     rtsp_server_close(&server);
 }
 
+static void test_buffered_flush_timebase(void)
+{
+    fixture();
+    int index = connect_client();
+    rtsp_client_t *client = &server.clients[0];
+    CHECK(client->socket.handle == (uintptr_t)(index + 1));
+    client->encrypted = client->pairing.established = 1;
+    server.stream_owner = client;
+    server.stream.has_session = server.stream.recording = 1;
+    server.stream.session.stream_type = 103;
+    server.stream.has_timestamp_floor = 1;
+    uint8_t body[256]; bplist_writer_t w;
+    bplist_writer_init(&w, body, sizeof(body));
+    uint32_t refs[] = {bplist_add_string(&w, "flushUntilTS"), bplist_add_uint(&w, 3949349609U),
+        bplist_add_string(&w, "flushUntilSeq"), bplist_add_uint(&w, 0x12ffff)};
+    size_t size = bplist_finish(&w, bplist_add_dict(&w, refs, 2));
+    rtsp_request_t request = {.method = RTSP_METHOD_FLUSHBUFFERED, .body = body, .body_len = size};
+    int handled;
+    CHECK(size && !airplay2_handle(&server, client, &request, &handled) && handled);
+    CHECK(!server.stream.has_timestamp_floor);
+    CHECK(server.stream.has_buffered_flush_sequence && server.stream.buffered_flush_sequence == 0x12ffff);
+    CHECK(server.stream.flush_generation == 1);
+    rtsp_server_close(&server);
+}
+
 int main(void)
 {
     test_fragmented_headers_and_pipeline();
@@ -559,6 +586,7 @@ int main(void)
     test_identity_and_client_limit();
     test_transport_and_timestamp_boundaries();
     test_fairplay_dispatch_and_reconnect();
+    test_buffered_flush_timebase();
     LOG_INFO("test", "RTSP framing, state, ownership, and failure tests passed\n");
     return 0;
 }

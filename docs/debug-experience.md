@@ -86,6 +86,10 @@ iOS sent RECORD after the initial control SETUP and before the audio-stream SETU
 
 Realtime type 96 audio then authenticated and decoded but remained silent. The sender supplied its playback anchor in an AirPlay 2 `0x57` UDP control packet. The receiver had ignored this packet, so queued ALAC never obtained a PTP deadline. Parsing its RTP timestamp, PTP nanoseconds, and clock identity completed the realtime scheduling path. The user confirmed audible playback, and a sustained session reached thousands of nonzero packets without reported gaps, late packets, or queue overflow.
 
+YouTube selected type 103 buffered AAC over TCP. Seeking changed the RTP timestamp base and sent FLUSHBUFFERED with a 24-bit `flushUntilSeq`. Filtering the new stream using the old RTP timestamp rejected valid post-seek audio. The receiver now discards buffered records through the sequence boundary, clears the old anchor, and accepts the new timestamp base. The TCP reader also continues from the two-byte length into the record body in one polling call, allowing stale buffered data to drain in batches instead of one packet per scheduler iteration.
+
+The final iPhone session exercised forward and backward YouTube seeks. Each FLUSH crossed its advertised sequence boundary and resumed nonzero AAC output. Regression coverage includes both FairPlay exchanges, encrypted RTSP framing, RECORD-before-stream-SETUP, `0x57` anchor scheduling, timestamp-base changes, 24-bit sequence wrap, and FLUSH arriving while a TCP record is partial. Nine Windows tests passed. Long-term device identity, pair-verify, multi-device playback, and target-hardware validation remain outside this single-sender milestone.
+
 ## YouTube: Audio Ahead of Video
 
 The same iPhone-to-Windows setup later produced a roughly fixed audio lead during YouTube playback. The pipeline decoded and submitted packets on arrival. It did not process the control packet's clock anchor, preserve the sender's SETUP timing port, or complete timing request/reply exchanges. Correct PCM therefore reached the device at the wrong time.

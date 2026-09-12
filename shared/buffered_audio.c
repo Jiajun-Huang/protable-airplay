@@ -1,4 +1,5 @@
 #include "buffered_audio.h"
+#include "log.h"
 #include <string.h>
 void buffered_audio_init(buffered_audio_t *b)
 {
@@ -11,7 +12,12 @@ int buffered_audio_open(buffered_audio_t *b, uint16_t port)
 }
 void buffered_audio_disconnect(buffered_audio_t *b)
 {
-    net_close(&b->client); b->used = 0;
+    net_close(&b->client); b->used = 0; b->discarding = 0;
+}
+void buffered_audio_flush(buffered_audio_t *b, uint32_t until_sequence)
+{
+    b->discard_sequence = until_sequence & 0xffffff;
+    b->discarding = 1;
 }
 void buffered_audio_close(buffered_audio_t *b) { buffered_audio_disconnect(b); net_close(&b->listener); }
 int buffered_audio_poll(buffered_audio_t *b, const char *ip, rtp_audio_callback callback, void *context)
@@ -28,7 +34,7 @@ int buffered_audio_poll(buffered_audio_t *b, const char *ip, rtp_audio_callback 
         if (n == NET_TIMEOUT) return 0;
         if (n <= 0) { buffered_audio_disconnect(b); return 0; }
         b->used += (size_t)n;
-        return 0;
+        if (b->used < 2) return 0;
     }
     size_t need = (size_t)b->data[0] << 8 | b->data[1];
     if (need < 38 || need > sizeof(b->data)) { buffered_audio_disconnect(b); return 0; }
@@ -39,6 +45,15 @@ int buffered_audio_poll(buffered_audio_t *b, const char *ip, rtp_audio_callback 
     if (b->used < need) return 0;
     const uint8_t *p = b->data + 2;
     uint32_t sequence = (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+    if (b->discarding) {
+        uint32_t distance = (sequence - b->discard_sequence) & 0xffffff;
+        if (!distance || distance >= 0x800000) {
+            b->used = 0;
+            return 1;
+        }
+        b->discarding = 0;
+        LOG_DEBUG("audio", "Buffered seek boundary reached: sequence=%u\n", sequence);
+    }
     rtp_packet_t packet = {0};
     packet.header.version = 2; packet.header.payload_type = 96;
     /* Buffered audio uses a 24-bit sequence; the reorder queue tracks its low 16 bits. */

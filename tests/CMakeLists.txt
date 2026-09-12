@@ -33,3 +33,8 @@ add_executable(test_airplay2 test_airplay2.c)
 target_link_libraries(test_airplay2 PRIVATE airplay_core)
 add_test(NAME airplay2_protocol COMMAND test_airplay2)
 set_tests_properties(airplay2_protocol PROPERTIES TIMEOUT 15)
+
+add_executable(test_buffered_audio test_buffered_audio.c)
+target_link_libraries(test_buffered_audio PRIVATE airplay_core)
+add_test(NAME buffered_audio_seek COMMAND test_buffered_audio)
+set_tests_properties(buffered_audio_seek PROPERTIES TIMEOUT 15)
