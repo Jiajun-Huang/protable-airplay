@@ -40,10 +40,12 @@ int alac_decoder_init(alac_decoder_t *decoder,
         for (size_t i = 0; i < decoder->fmtp_count; i++)
             decoder->fmtp[i] = fmtp[i];
 
-        LOG_DEBUG("alac", "fmtp_count=%zu values:", decoder->fmtp_count);
+        char values[12 * 11 + 1] = {0};
+        size_t length = 0;
         for (size_t i = 0; i < decoder->fmtp_count; i++)
-            LOG_DEBUG("alac", " %u", decoder->fmtp[i]);
-        LOG_DEBUG("alac", "\n");
+            length += (size_t)snprintf(values + length, sizeof(values) - length,
+                                       " %u", decoder->fmtp[i]);
+        LOG_DEBUG("alac", "fmtp_count=%zu values:%s\n", decoder->fmtp_count, values);
     }
 
     alac_file *alac = alac_create(decoder->bit_depth, decoder->channels);

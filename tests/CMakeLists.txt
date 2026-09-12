@@ -28,3 +28,8 @@ add_test(NAME alac_samples COMMAND test_alac)
 add_executable(test_timing test_timing.c)
 target_link_libraries(test_timing PRIVATE airplay_core)
 add_test(NAME scheduled_audio COMMAND test_timing)
+
+add_executable(test_airplay2 test_airplay2.c)
+target_link_libraries(test_airplay2 PRIVATE airplay_core)
+add_test(NAME airplay2_protocol COMMAND test_airplay2)
+set_tests_properties(airplay2_protocol PROPERTIES TIMEOUT 15)

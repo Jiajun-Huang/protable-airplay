@@ -7,6 +7,8 @@
 #include "net.h"
 #include "os.h"
 #include "sdp.h"
+#include "airplay/pairing.h"
+#include "ptp_sync.h"
 
 typedef enum
 {
@@ -24,7 +26,9 @@ typedef enum
     RTSP_METHOD_PAUSE,
     RTSP_METHOD_TEARDOWN,
     RTSP_METHOD_GET_PARAMETER,
-    RTSP_METHOD_SET_PARAMETER
+    RTSP_METHOD_SET_PARAMETER,
+    RTSP_METHOD_SETPEERS,
+    RTSP_METHOD_SETRATEANCHORTIME
 } rtsp_method_t;
 
 typedef struct
@@ -49,6 +53,12 @@ typedef struct
 {
     net_socket_t socket;
     net_addr_t peer;
+    pairing_t pairing;
+    uint8_t fairplay_stage;
+    int encrypted, http;
+    uint8_t record[PAIR_RECORD_MAX + 18];
+    size_t record_used;
+    net_socket_t event_listener, event_client;
 } rtsp_client_t;
 
 typedef struct
@@ -62,6 +72,7 @@ typedef struct
     net_addr_t timing_peer;
     uint32_t timestamp_floor;
     int has_timestamp_floor, floor_exclusive;
+    airplay_anchor_t anchor;
 } rtsp_stream_state_t;
 
 typedef struct rtsp_instance
@@ -76,6 +87,7 @@ typedef struct rtsp_instance
     rtsp_client_t *stream_owner;
     char local_ip[16];
     char local_mac_hex[13];
+    char device_name[64];
 } rtsp_instance_t;
 
 /* The caller owns the instance and the thread calling poll. Create before

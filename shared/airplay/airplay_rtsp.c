@@ -97,7 +97,7 @@ int airplay_rtsp_options(rtsp_instance_t *instance, rtsp_client_t *client,
     char extra_headers[768];
     const char *challenge = get_header_value(request, "Apple-Challenge");
     snprintf(extra_headers, sizeof(extra_headers),
-             "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET\r\n");
+             "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, FLUSHBUFFERED, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET, SETPEERS, SETRATEANCHORTIME\r\n");
     if (challenge && *challenge)
     {
         char local_ip[16], local_mac_hex[13];

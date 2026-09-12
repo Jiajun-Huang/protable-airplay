@@ -7,6 +7,9 @@
 typedef struct {
     net_socket_t socket;
     mdns_instance_t service;
+    mdns_instance_t airplay_service;
+    char airplay_name[64], deviceid[32];
+    const char *airplay_txt[8];
     char raop_name[96];
     char hostname[96];
     char local_ip[16];

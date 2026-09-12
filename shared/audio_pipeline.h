@@ -10,6 +10,8 @@
 #include "crypto.h"
 #include "ntp_sync.h"
 #include "playout.h"
+#include "ptp_sync.h"
+#include "buffered_audio.h"
 
 /**
  * @brief Audio pipeline state
@@ -50,6 +52,10 @@ typedef struct
     uint64_t first_arrival_us;
     uint32_t first_timestamp, queue_overflows, late_packets, nonzero_packets;
     int fallback_logged;
+    ptp_sync_t ptp;
+    airplay_anchor_t anchor;
+    buffered_audio_t buffered;
+    char local_ip[16];
 
     // Audio buffer for decoded samples
     int16_t audio_buffer[MAX_AUDIO_BUFFER_SAMPLES];
@@ -78,6 +84,7 @@ typedef struct
     void (*on_audio_data)(const int16_t *samples, size_t sample_count, void *user_data);
     void *user_data;
     int (*output_delay_frames)(void *user_data);
+    const char *local_ip;
 } audio_pipeline_config_t;
 
 /**

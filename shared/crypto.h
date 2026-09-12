@@ -58,9 +58,9 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t 
  * The payload layout is ciphertext || 16-byte tag || 8-byte nonce suffix.
  * AAD is the RTP timestamp and SSRC at full_packet offsets 4..11. */
 int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
-                               const uint8_t *full_packet, size_t full_packet_len,
-                               size_t payload_offset, size_t payload_len,
-                               uint8_t *output, size_t output_capacity,
-                               size_t *output_len);
+                                const uint8_t *full_packet, size_t full_packet_len,
+                                size_t payload_offset, size_t payload_len,
+                                uint8_t *output, size_t output_capacity,
+                                size_t *output_len);
 
 #endif // CRYPTO_H

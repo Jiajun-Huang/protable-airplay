@@ -25,14 +25,22 @@ static int parse_hex_bytes(const char *text, uint8_t *output, size_t capacity)
     while (text[0] && text[1] && text[0] != ';' && text[1] != ';')
     {
         unsigned high, low;
-        if (text[0] >= '0' && text[0] <= '9') high = (unsigned)(text[0] - '0');
-        else if (text[0] >= 'a' && text[0] <= 'f') high = (unsigned)(text[0] - 'a' + 10);
-        else if (text[0] >= 'A' && text[0] <= 'F') high = (unsigned)(text[0] - 'A' + 10);
-        else break;
-        if (text[1] >= '0' && text[1] <= '9') low = (unsigned)(text[1] - '0');
-        else if (text[1] >= 'a' && text[1] <= 'f') low = (unsigned)(text[1] - 'a' + 10);
-        else if (text[1] >= 'A' && text[1] <= 'F') low = (unsigned)(text[1] - 'A' + 10);
-        else break;
+        if (text[0] >= '0' && text[0] <= '9')
+            high = (unsigned)(text[0] - '0');
+        else if (text[0] >= 'a' && text[0] <= 'f')
+            high = (unsigned)(text[0] - 'a' + 10);
+        else if (text[0] >= 'A' && text[0] <= 'F')
+            high = (unsigned)(text[0] - 'A' + 10);
+        else
+            break;
+        if (text[1] >= '0' && text[1] <= '9')
+            low = (unsigned)(text[1] - '0');
+        else if (text[1] >= 'a' && text[1] <= 'f')
+            low = (unsigned)(text[1] - 'a' + 10);
+        else if (text[1] >= 'A' && text[1] <= 'F')
+            low = (unsigned)(text[1] - 'A' + 10);
+        else
+            break;
         if (length >= capacity)
             return -1;
         output[length++] = (uint8_t)((high << 4) | low);
@@ -215,9 +223,9 @@ int sdp_parse(const uint8_t *sdp_data,
                                                              sizeof(session->aac_config));
                             session->aac_config_len = config_len > 0 ? (size_t)config_len : 0;
                         }
-                        session->aac_size_length = size_length ? (uint8_t)atoi(size_length + 11) : 13;
-                        session->aac_index_length = index_length ? (uint8_t)atoi(index_length + 12) : 3;
-                        session->aac_index_delta_length = index_delta ? (uint8_t)atoi(index_delta + 18) : 3;
+                        session->aac_size_length = size_length ? (uint8_t)atoi(size_length + strlen("sizelength=")) : 13;
+                        session->aac_index_length = index_length ? (uint8_t)atoi(index_length + strlen("indexlength=")) : 3;
+                        session->aac_index_delta_length = index_delta ? (uint8_t)atoi(index_delta + strlen("indexdeltalength=")) : 3;
                         break;
                     }
                     // Parse ALAC configuration

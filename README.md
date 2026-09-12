@@ -1,6 +1,6 @@
 # AirPlay Speaker
 
-A portable C audio receiver for computers and embedded systems. It receives RAOP audio over IPv4/UDP, decrypts RSA/AES sessions, decodes ALAC or 16-bit PCM, and schedules playback using the sender's clock. One audio stream is active at a time.
+A portable C AirPlay audio receiver for computers and embedded systems. It supports traditional RAOP over UDP and AirPlay 2 realtime ALAC over UDP or buffered AAC over TCP. Audio is decrypted, decoded, and scheduled against the sender's NTP or PTP clock. One audio stream is active at a time.
 
 ## System Overview
 
@@ -10,9 +10,9 @@ The shared core owns discovery, session control, decoding, and playback scheduli
 
 | Service | Entry point | Responsibility |
 | --- | --- | --- |
-| Discovery | `airplay_mdns_main` | Advertise the `_raop._tcp` service through mDNS |
+| Discovery | `airplay_mdns_main` | Advertise `_raop._tcp` and `_airplay._tcp` through mDNS |
 | Session control | `airplay_rtsp_main` | Handle RTSP requests and publish synchronized session state |
-| Audio | `airplay_audio_main` | Receive RTP, synchronize clocks, buffer packets, decode, and output PCM |
+| Audio | `airplay_audio_main` | Receive UDP/TCP audio, synchronize clocks, buffer packets, decode, and output PCM |
 
 ```text
 airplay_config.h   Device identity, service ports, audio defaults, memory limits, task settings
@@ -80,7 +80,7 @@ ctest --test-dir ../build --output-on-failure
 ../build/airplay_player 192.168.1.50 020000000050 MySpeaker
 ```
 
-Replace the example IP and MAC with the selected interface's values. The MAC is a 12-digit hexadecimal string without separators; the name is optional. Allow mDNS multicast on UDP 5353 and the configured service ports (TCP 5000 and UDP 6000-6002 by default). Press Ctrl+C to stop.
+Replace the example IP and MAC with the selected interface's values. The MAC is a 12-digit hexadecimal string without separators; the name is optional. Allow mDNS multicast on UDP 5353 and the configured service ports (TCP 5000 and 6000, UDP 6000-6002, and PTP UDP 319-320 by default). Press Ctrl+C to stop.
 
 ### Embedded (FreeRTOS and lwIP)
 

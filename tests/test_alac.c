@@ -1,12 +1,13 @@
 #include "alac_decoder.h"
 #include "crypto.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <mbedtls/aes.h>
 #include "fixtures/alac.h"
 
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+#define CHECK(x) do { if (!(x)) { LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
 static void check_decode(const uint8_t *data, size_t length, const int16_t *expected, unsigned channels)
 {
     alac_decoder_t decoder;
@@ -19,7 +20,7 @@ static void check_decode(const uint8_t *data, size_t length, const int16_t *expe
     CHECK(count == 352 * channels);
     size_t mismatch = 0;
     for (size_t i = 0; i < count; ++i) if (output[i] != expected[i]) ++mismatch;
-    printf("ALAC channels=%u bytes=%zu samples=%zu mismatches=%zu\n", channels, length, count, mismatch);
+    LOG_INFO("test", "ALAC channels=%u bytes=%zu samples=%zu mismatches=%zu\n", channels, length, count, mismatch);
     CHECK(mismatch == 0);
     CHECK(alac_decoder_decode_frame(&decoder, data, 2, output, &count, 704) < 0 && count == 0);
     uint8_t invalid[8] = {0xe0};

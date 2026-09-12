@@ -2,6 +2,7 @@
 #define AIRPLAY_CONFIG_H
 
 /* Compile-time settings shared by the services and platform backends. Rebuild after editing. */
+#define AIRPLAY_LOG_LEVEL LOG_LEVEL_DEBUG
 
 /* Device identity. The CLI NAME argument or airplay_config_t.device_name can override the name. */
 #define AIRPLAY_DEVICE_NAME "TestSpeaker"
@@ -13,6 +14,15 @@
 #define AIRPLAY_AUDIO_PORT 6000
 #define AIRPLAY_CONTROL_PORT 6001
 #define AIRPLAY_TIMING_PORT 6002
+#define AIRPLAY_BUFFERED_PORT 6000 /* TCP; realtime audio uses UDP on this port. */
+#define AIRPLAY_PTP_EVENT_PORT 319
+#define AIRPLAY_PTP_GENERAL_PORT 320
+#define AIRPLAY2_SOURCE_VERSION "377.40.00"
+/* Audio, buffered audio, PTP and transient pairing; no persistent HomeKit pairing. */
+#define AIRPLAY2_FEATURES_LOW 0x405C4A00
+#define AIRPLAY2_FEATURES_HIGH 0x18340
+#define AIRPLAY2_FEATURES_TEXT "0x405C4A00,0x18340"
+#define AIRPLAY2_REALTIME_LATENCY_FRAMES 11025
 
 /* Audio defaults. Playback uses the sender's SDP parameters; the PCM output interface is 16-bit. */
 #define AIRPLAY_DEFAULT_SAMPLE_RATE 44100
@@ -33,7 +43,8 @@
 #define AIRPLAY_RAOP_TXT_ENTRIES \
     "txtvers=1", \
     "ch=" AIRPLAY_STRINGIFY(AIRPLAY_DEFAULT_CHANNELS), \
-    "cn=0,1", "da=true", "et=0,1", "md=0,1,2", "pw=false", "sv=false", \
+    "cn=0,1,2", "da=true", "et=0,1", "md=0,1,2", "pw=false", "sv=false", \
+    "ft=" AIRPLAY2_FEATURES_TEXT, "vv=2", \
     "sr=" AIRPLAY_STRINGIFY(AIRPLAY_DEFAULT_SAMPLE_RATE), \
     "ss=" AIRPLAY_STRINGIFY(AIRPLAY_DEFAULT_BITS_PER_SAMPLE), \
     "tp=UDP", "vn=65537", "vs=" AIRPLAY_SERVER_VERSION, \

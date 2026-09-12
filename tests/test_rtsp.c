@@ -1,12 +1,13 @@
 #include "rtsp.h"
 
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
-        fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #condition); \
+        LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #condition); \
         exit(1); \
     } \
 } while (0)
@@ -517,6 +518,32 @@ static void test_transport_and_timestamp_boundaries(void)
     rtsp_server_close(&server);
 }
 
+static void test_fairplay_dispatch_and_reconnect(void)
+{
+    fixture();
+    int client = connect_client();
+    const uint8_t first[16] = {'F','P','L','Y',3,1,1,0,0,0,0,4,2,0,0,0};
+    append_text(client, "POST /fp-setup RTSP/1.0\r\nCSeq: 1\r\nContent-Length: 16\r\n\r\n");
+    append(client, first, 8);
+    CHECK(rtsp_server_poll(&server, 0) == 0 && !clients[client].output_length);
+    append(client, first + 8, 8);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output, "200 OK"));
+    CHECK(strstr(clients[client].output, "Content-Length: 142\r\n"));
+    CHECK(server.clients[0].fairplay_stage == 1);
+    clients[client].eof = 1;
+    CHECK(rtsp_server_poll(&server, 0) == 0 && clients[client].closed);
+    CHECK(server.clients[0].fairplay_stage == 0);
+    client = connect_client();
+    const uint8_t second[164] = {'F','P','L','Y',3,1,3,0,0,0,0,152};
+    append_text(client, "POST /fp-setup RTSP/1.0\r\nCSeq: 2\r\nContent-Length: 164\r\n\r\n");
+    append(client, second, sizeof(second));
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output, "400 Bad Request"));
+    CHECK(server.clients[0].fairplay_stage == 0);
+    rtsp_server_close(&server);
+}
+
 int main(void)
 {
     test_fragmented_headers_and_pipeline();
@@ -531,6 +558,7 @@ int main(void)
     test_volume_and_large_artwork();
     test_identity_and_client_limit();
     test_transport_and_timestamp_boundaries();
-    puts("RTSP framing, state, ownership, and failure tests passed");
+    test_fairplay_dispatch_and_reconnect();
+    LOG_INFO("test", "RTSP framing, state, ownership, and failure tests passed\n");
     return 0;
 }

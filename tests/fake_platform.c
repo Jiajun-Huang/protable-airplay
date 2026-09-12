@@ -1,9 +1,10 @@
 #include "fake_platform.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "fake platform: %s\n", #x); abort(); } } while (0)
+#define CHECK(x) do { if (!(x)) { LOG_ERROR("test", "fake platform: %s\n", #x); abort(); } } while (0)
 int fake_resources, fake_mutexes, fake_steps, fake_io_error;
 int fake_audio_writes, fake_samples;
 int16_t fake_pcm[4];

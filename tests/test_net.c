@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "net.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,7 @@ typedef int test_socket_t;
 #define TEST_SHUT_WR SHUT_WR
 #endif
 
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+#define CHECK(x) do { if (!(x)) { LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
 
 static uint64_t test_now_ms(void)
 {
@@ -111,6 +112,6 @@ int main(void)
     CHECK(net_tcp_send_all(&client, "x", 1, 1000) == NET_ERROR);
     net_close(&client); net_close(&listener);
     net_deinit();
-    puts("Network contract checks passed");
+    LOG_INFO("test", "Network contract checks passed\n");
     return 0;
 }

@@ -52,7 +52,8 @@ endif()
 add_library(airplay_core STATIC
     shared/server.c
     shared/rtsp.c shared/rtp.c shared/mdns.c shared/sdp.c
-    shared/network_util.c shared/ntp_sync.c shared/log.c
+    shared/network_util.c shared/ntp_sync.c shared/log.c shared/bplist.c
+    shared/airplay/pairing.c shared/airplay/fairplay.c shared/airplay/airplay2.c shared/ptp_sync.c shared/buffered_audio.c
     shared/audio_pipeline.c shared/playout.c shared/alac_decoder.c shared/aac_decoder.c shared/alac.c shared/crypto.c
     shared/airplay/airplay_auth.c shared/airplay/airplay_rtsp.c
     shared/airplay/airplay_discovery.c)

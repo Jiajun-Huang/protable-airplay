@@ -51,6 +51,9 @@ typedef struct
 
     // RTP
     uint8_t payload_type; // RTP payload type (usually 96)
+    uint16_t stream_type; // 0 = RAOP, 96 = AirPlay 2 realtime, 103 = buffered
+    uint8_t audio_key[32];
+    uint32_t latency_frames;
 
 } sdp_session_t;
 

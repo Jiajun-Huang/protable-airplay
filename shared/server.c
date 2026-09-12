@@ -55,6 +55,7 @@ int airplay_server_init(airplay_server_t *server, const airplay_config_t *config
     server->rtsp_initialized = 1;
     if (rtsp_set_identity(&server->rtsp, config->local_ip, config->local_mac_hex) != 0)
         goto fail;
+    strcpy(server->rtsp.device_name, config->device_name);
 
     audio_pipeline_config_t audio_config = {0};
     audio_config.audio_port = AIRPLAY_AUDIO_PORT;
@@ -63,6 +64,7 @@ int airplay_server_init(airplay_server_t *server, const airplay_config_t *config
     audio_config.on_audio_data = output_pcm;
     audio_config.output_delay_frames = output_delay_frames;
     audio_config.user_data = server;
+    audio_config.local_ip = config->local_ip;
     if (audio_pipeline_create(&server->pipeline, &audio_config) != 0)
         goto fail;
     server->audio_initialized = 1;
@@ -181,6 +183,13 @@ void airplay_audio_main(void *arg)
                 volume_db = stream.volume_db;
                 audio_pipeline_set_volume(&server->pipeline, volume_db);
             }
+        }
+        /* Realtime streams obtain their anchors from UDP control packets in
+         * the audio thread; buffered streams use the RTSP control state. */
+        if (stream.session.stream_type != 96)
+        {
+            server->pipeline.anchor = stream.anchor;
+            ptp_sync_set_clock(&server->pipeline.ptp, stream.anchor.clock_id);
         }
         /* Drain all three RTP sockets while idle too, so a later RECORD starts fresh. */
         if (audio_pipeline_poll(&server->pipeline, 20) != 0)

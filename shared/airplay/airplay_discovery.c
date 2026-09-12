@@ -15,7 +15,8 @@ int airplay_discovery_init(airplay_discovery_t *discovery,
     mdns_config_t config;
     uint32_t address;
     int length;
-    if (!discovery || !friendly_name || !friendly_name[0] || !local_ip ||
+    if (!discovery || !friendly_name || !friendly_name[0] ||
+        strlen(friendly_name) >= sizeof(discovery->airplay_name) || !local_ip ||
         raop_txt_count > UINT16_MAX ||
         net_str_to_ipv4(local_ip, &address) != 0 || strlen(local_ip) >= sizeof(discovery->local_ip))
         return -1;
@@ -46,6 +47,22 @@ int airplay_discovery_init(airplay_discovery_t *discovery,
         goto fail;
     if (mdns_announce(&discovery->service) != MDNS_OK)
         goto fail;
+    strcpy(discovery->airplay_name, friendly_name);
+    const char *mac = local_mac && strlen(local_mac) == 12 ? local_mac : "000000000000";
+    snprintf(discovery->deviceid, sizeof(discovery->deviceid),
+             "deviceid=%.2s:%.2s:%.2s:%.2s:%.2s:%.2s",
+             mac, mac + 2, mac + 4, mac + 6, mac + 8, mac + 10);
+    const char *airplay_txt[] = {discovery->deviceid,
+        "features=" AIRPLAY2_FEATURES_TEXT, "flags=0x4", "model=" AIRPLAY_MODEL_NAME,
+        "srcvers=" AIRPLAY2_SOURCE_VERSION, "vv=2", "acl=0"};
+    memcpy(discovery->airplay_txt, airplay_txt, sizeof(airplay_txt));
+    config.service_type = "_airplay._tcp.local";
+    config.instance_name = discovery->airplay_name;
+    config.txt_entries = discovery->airplay_txt;
+    config.txt_count = (uint16_t)(sizeof(airplay_txt) / sizeof(airplay_txt[0]));
+    if (mdns_create(&discovery->airplay_service, &config, &discovery->socket) != MDNS_OK ||
+        mdns_announce(&discovery->airplay_service) != MDNS_OK)
+        goto fail;
     discovery->initialized = 1;
     return 0;
 fail:
@@ -68,6 +85,9 @@ int airplay_discovery_poll(airplay_discovery_t *discovery, int timeout_ms)
     mdns_error_t result = mdns_handle_packet_from(&discovery->service, packet, (size_t)length, &source);
     if (result == MDNS_ERR_SOCKET_ERROR)
         return -1;
+    if (mdns_handle_packet_from(&discovery->airplay_service, packet, (size_t)length, &source)
+        == MDNS_ERR_SOCKET_ERROR)
+        return -1;
     return 0;
 }
 
@@ -76,6 +96,7 @@ void airplay_discovery_deinit(airplay_discovery_t *discovery)
     if (!discovery || !discovery->initialized)
         return;
     mdns_goodbye(&discovery->service);
+    mdns_goodbye(&discovery->airplay_service);
     net_close(&discovery->socket);
     discovery->initialized = 0;
 }

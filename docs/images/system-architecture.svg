@@ -4,13 +4,13 @@
 <style>text{font-family:Arial,Helvetica,sans-serif;fill:#18314b} .title{font-size:27px;font-weight:700;letter-spacing:-.4px} .subtitle{font-size:15px;fill:#586d85} .label{font-size:12px;font-weight:700;letter-spacing:1.5px;fill:#506886} .heading{font-size:19px;font-weight:700} .body{font-size:14px;fill:#526780} .code{font-family:Consolas,monospace;font-size:13px;fill:#23558c}</style>
 <rect width="1120" height="790" rx="24" fill="#f7f9fc"/>
 <text x="36" y="45" class="title" text-anchor="start" >One core. Four platform backends.</text>
-<text x="36" y="73" class="subtitle" text-anchor="start" >Portable RAOP receiver · services in shared/ · adapters in platform/</text>
+<text x="36" y="73" class="subtitle" text-anchor="start" >Portable AirPlay receiver · services in shared/ · adapters in platform/</text>
 <rect x="828" y="28" width="256" height="53" rx="12" fill="#e8eef9" stroke="#d4dff0"/>
 <text x="956" y="50" class="code" text-anchor="middle" >airplay_config.h</text>
 <text x="956" y="69" class="body" text-anchor="middle" >Identity · ports · memory · tasks</text>
 <rect x="36" y="102" width="1048" height="60" rx="12" fill="#18314b" stroke="#18314b"/>
 <text x="560" y="128" class="heading" text-anchor="middle" style="fill:#fff">AirPlay sender</text>
-<text x="560" y="150" class="body" text-anchor="middle" style="fill:#c9d8ed">iPhone / compatible RAOP source</text>
+<text x="560" y="150" class="body" text-anchor="middle" style="fill:#c9d8ed">iPhone / compatible AirPlay source</text>
 <rect x="36" y="204" width="1048" height="216" rx="16" fill="#edf3fd" stroke="#d3e0f5"/>
 <text x="56" y="229" class="label" text-anchor="start" >SHARED C CORE</text>
 <path d="M216 163 V174" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  />
@@ -28,13 +28,13 @@
 <text x="560" y="307" class="code" text-anchor="middle" >airplay_rtsp_main</text>
 <text x="560" y="336" class="body" text-anchor="middle" >Session state · SDP · stream control</text>
 <path d="M904 163 V174" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  />
-<text x="904" y="190" class="body" text-anchor="middle" >RTP · UDP 6000 / 6001 / 6002</text>
+<text x="904" y="190" class="body" text-anchor="middle" >Audio · UDP/TCP 6000 · PTP 319/320</text>
 <path d="M904 195 V248" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
 <rect x="744" y="250" width="320" height="108" rx="12" fill="#fff" stroke="#d9e2ef"/>
 <text x="904" y="279" class="heading" text-anchor="middle" >Audio</text>
 <text x="904" y="307" class="code" text-anchor="middle" >airplay_audio_main</text>
 <text x="904" y="336" class="body" text-anchor="middle" >RTP · timing · scheduled PCM output</text>
-<text x="560" y="389" class="body" text-anchor="middle" >Shared logic: packet buffering · sender-clock mapping · RSA/AES · ALAC/PCM · volume</text>
+<text x="560" y="389" class="body" text-anchor="middle" >Shared logic: buffering · NTP/PTP · session/audio crypto · ALAC/AAC/PCM</text>
 <text x="56" y="449" class="label" text-anchor="start" >INTERFACES</text>
 <path d="M216 420 V469" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
 <rect x="56" y="471" width="320" height="77" rx="12" fill="#edf8f6" stroke="#bce0d9"/>

@@ -1,9 +1,10 @@
 #include "mdns.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+#define CHECK(x) do { if (!(x)) { LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
 static uint8_t sent[1500];
 static size_t sent_length;
 static net_addr_t destination;
@@ -61,5 +62,5 @@ int main(void)
     uint8_t loop[] = {0,0,0,0,0,1,0,0,0,0,0,0,0xc0,12,0,12,0,1};
     CHECK(mdns_handle_packet(&mdns, loop, sizeof(loop)) == MDNS_ERR_INVALID_DATA);
     CHECK(sends == previous);
-    puts("mDNS wire checks passed"); return 0;
+    LOG_INFO("test", "mDNS wire checks passed\n"); return 0;
 }
