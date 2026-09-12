@@ -177,6 +177,8 @@ void airplay_audio_main(void *arg)
                 audio_pipeline_set_volume(&server->pipeline, volume_db);
                 if (stream.has_timestamp_floor)
                     audio_pipeline_set_start(&server->pipeline, stream.timestamp_floor, stream.floor_exclusive);
+                if (stream.has_buffered_flush_sequence && stream.session.stream_type == 103)
+                    buffered_audio_flush(&server->pipeline.buffered, stream.buffered_flush_sequence);
             }
             if (volume_db != stream.volume_db)
             {

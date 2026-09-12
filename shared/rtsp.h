@@ -72,6 +72,8 @@ typedef struct
     net_addr_t timing_peer;
     uint32_t timestamp_floor;
     int has_timestamp_floor, floor_exclusive;
+    uint32_t buffered_flush_sequence;
+    int has_buffered_flush_sequence;
     airplay_anchor_t anchor;
 } rtsp_stream_state_t;
 

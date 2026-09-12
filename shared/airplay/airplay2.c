@@ -132,6 +132,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
     s->stream.session = session;
     s->stream.has_session = s->stream.recording = 1;
     s->stream.has_timestamp_floor = 0;
+    s->stream.has_buffered_flush_sequence = 0;
     s->stream.timing_peer = c->peer; s->stream.timing_peer.port = 0;
     memset(&s->stream.anchor, 0, sizeof(s->stream.anchor));
     ++s->stream.generation; s->stream_owner = c;
@@ -223,19 +224,24 @@ int airplay2_handle(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *
         if (bplist_open(&p, r->body, r->body_len)) return status(c, r, 400, "Bad Request");
         if (r->method == RTSP_METHOD_SETUP) return setup(s, c, r, &p);
         if (r->method == RTSP_METHOD_SETRATEANCHORTIME) return set_anchor(s, c, r, &p);
-        uint64_t until;
-        if (bplist_uint(&p, bplist_get(&p, p.root, "flushUntilTS"), &until) || until > UINT32_MAX)
+        uint64_t until, until_sequence;
+        if (bplist_uint(&p, bplist_get(&p, p.root, "flushUntilTS"), &until) || until > UINT32_MAX ||
+            bplist_uint(&p, bplist_get(&p, p.root, "flushUntilSeq"), &until_sequence) ||
+            until_sequence > 0xffffff)
             return status(c, r, 400, "Bad Request");
         os_mutex_lock(&s->state_lock);
         if (s->stream_owner == c) {
-            s->stream.timestamp_floor = (uint32_t)until;
-            s->stream.has_timestamp_floor = 1;
-            s->stream.floor_exclusive = 1;
+            /* A seek may replace the RTP time base. The sequence boundary
+             * identifies old buffered records without filtering the new time base. */
+            s->stream.buffered_flush_sequence = (uint32_t)until_sequence;
+            s->stream.has_buffered_flush_sequence = 1;
+            s->stream.has_timestamp_floor = 0;
             s->stream.anchor.playing = 0;
             ++s->stream.flush_generation;
         }
         os_mutex_unlock(&s->state_lock);
-        LOG_DEBUG("airplay2", "FLUSHBUFFERED through RTP=%u\n", (uint32_t)until);
+        LOG_DEBUG("airplay2", "FLUSHBUFFERED through sequence=%u RTP=%u\n",
+                  (uint32_t)until_sequence, (uint32_t)until);
         return status(c, r, 200, "OK");
     }
     if (r->method == RTSP_METHOD_SETPEERS || (r->method == RTSP_METHOD_POST &&
