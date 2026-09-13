@@ -213,18 +213,20 @@ static void append_text(int client, const char *text)
     append(client, text, strlen(text));
 }
 
-static void queue_request(int client,
-                          const char *method,
-                          unsigned cseq,
-                          const char *headers,
-                          const void *body,
-                          size_t body_length)
+static void queue_uri_request(int client,
+                              const char *method,
+                              const char *uri,
+                              unsigned cseq,
+                              const char *headers,
+                              const void *body,
+                              size_t body_length)
 {
     char request[1024];
     int length = snprintf(request,
                           sizeof(request),
-                          "%s * RTSP/1.0\r\nCSeq: %u\r\n%sContent-Length: %zu\r\n\r\n",
+                          "%s %s RTSP/1.0\r\nCSeq: %u\r\n%sContent-Length: %zu\r\n\r\n",
                           method,
+                          uri,
                           cseq,
                           headers ? headers : "",
                           body_length);
@@ -232,6 +234,16 @@ static void queue_request(int client,
     append(client, request, (size_t)length);
     if (body_length)
         append(client, body, body_length);
+}
+
+static void queue_request(int client,
+                          const char *method,
+                          unsigned cseq,
+                          const char *headers,
+                          const void *body,
+                          size_t body_length)
+{
+    queue_uri_request(client, method, "*", cseq, headers, body, body_length);
 }
 
 static void request(int client, const char *method, unsigned cseq)
@@ -585,6 +597,49 @@ static void test_fairplay_dispatch_and_reconnect(void)
     rtsp_server_close(&server);
 }
 
+static void test_method_router(void)
+{
+    fixture();
+    int client = connect_client();
+    size_t response = clients[client].output_length;
+    queue_uri_request(client, "GET", "/info", 1, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "200 OK"));
+    CHECK(strstr(clients[client].output + response,
+                 "Content-Type: application/x-apple-binary-plist"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "GET", "/unknown", 2, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "501 Not Implemented"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "POST", "/unknown", 3, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "200 OK"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "POST", "/feedback", 4, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "470 Connection Authorization Required"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "SETUP", "*", 5, NULL, "bplist00", 8);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "470 Connection Authorization Required"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "SETRATEANCHORTIME", "*", 6, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "470 Connection Authorization Required"));
+
+    response = clients[client].output_length;
+    queue_uri_request(client, "SETPEERS", "*", 7, NULL, NULL, 0);
+    CHECK(rtsp_server_poll(&server, 0) == 0);
+    CHECK(strstr(clients[client].output + response, "470 Connection Authorization Required"));
+    rtsp_server_close(&server);
+}
+
 static void test_buffered_flush_timebase(void)
 {
     fixture();
@@ -605,8 +660,7 @@ static void test_buffered_flush_timebase(void)
                        bplist_add_uint(&w, 0x12ffff)};
     size_t size = bplist_finish(&w, bplist_add_dict(&w, refs, 2));
     rtsp_request_t request = {.method = RTSP_METHOD_FLUSHBUFFERED, .body = body, .body_len = size};
-    int handled;
-    CHECK(size && !airplay2_handle(&server, client, &request, &handled) && handled);
+    CHECK(size && !airplay2_flush_buffered(&server, client, &request));
     CHECK(!server.stream.has_timestamp_floor);
     CHECK(server.stream.has_buffered_flush_sequence &&
           server.stream.buffered_flush_sequence == 0x12ffff);
@@ -630,6 +684,7 @@ int main(void)
     test_identity_and_client_limit();
     test_transport_and_timestamp_boundaries();
     test_fairplay_dispatch_and_reconnect();
+    test_method_router();
     test_buffered_flush_timebase();
     LOG_INFO("test", "RTSP framing, state, ownership, and failure tests passed\n");
     return 0;

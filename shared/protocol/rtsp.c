@@ -261,21 +261,33 @@ static int handle_request(rtsp_instance_t *instance,
               request->method,
               request->uri,
               request->body_len);
-    int handled;
-    int result = airplay2_handle(instance, client, request, &handled);
-    if (handled)
-        return result;
+    int binary_plist =
+        request->body && request->body_len >= 8 && memcmp(request->body, "bplist00", 8) == 0;
     switch (request->method)
     {
+    case RTSP_METHOD_GET:
+        if (strcmp(request->uri, "/info") == 0)
+            return airplay2_info(instance, client, request);
+        break;
+    case RTSP_METHOD_POST:
+        if (strcmp(request->uri, "/pair-setup") == 0)
+            return airplay2_pair_setup(instance, client, request);
+        else if (strcmp(request->uri, "/fp-setup") == 0)
+            return airplay2_fairplay_setup(instance, client, request);
+        else if (strcmp(request->uri, "/feedback") == 0)
+            return airplay2_feedback(instance, client, request);
+        else if (strcmp(request->uri, "/audioMode") == 0 || strcmp(request->uri, "/command") == 0)
+            return airplay2_acknowledge(instance, client, request);
+        return airplay_rtsp_post(instance, client, request);
     case RTSP_METHOD_OPTIONS:
         return airplay_rtsp_options(instance, client, request);
     case RTSP_METHOD_DESCRIBE:
         return airplay_rtsp_describe(instance, client, request);
     case RTSP_METHOD_ANNOUNCE:
         return airplay_rtsp_announce(instance, client, request);
-    case RTSP_METHOD_POST:
-        return airplay_rtsp_post(instance, client, request);
     case RTSP_METHOD_SETUP:
+        if (binary_plist)
+            return airplay2_setup(instance, client, request);
         return airplay_rtsp_setup(instance, client, request);
     case RTSP_METHOD_GET_PARAMETER:
         return airplay_rtsp_get_parameter(instance, client, request);
@@ -284,18 +296,28 @@ static int handle_request(rtsp_instance_t *instance,
     case RTSP_METHOD_FLUSH:
         return airplay_rtsp_flush(instance, client, request);
     case RTSP_METHOD_FLUSHBUFFERED:
+        if (binary_plist)
+            return airplay2_flush_buffered(instance, client, request);
         return airplay_rtsp_flushbuffered(instance, client, request);
     case RTSP_METHOD_TEARDOWN:
         return airplay_rtsp_teardown(instance, client, request);
     case RTSP_METHOD_PAUSE:
         return airplay_rtsp_pause(instance, client, request);
     case RTSP_METHOD_RECORD:
+        if (client->encrypted && client->event_listener.handle != UINTPTR_MAX)
+            return airplay2_record(instance, client, request);
         return airplay_rtsp_record(instance, client, request);
     case RTSP_METHOD_PLAY:
         return airplay_rtsp_play(instance, client, request);
+    case RTSP_METHOD_SETPEERS:
+        return airplay2_acknowledge(instance, client, request);
+    case RTSP_METHOD_SETRATEANCHORTIME:
+        return airplay2_set_rate_anchor_time(instance, client, request);
     default:
-        return rtsp_send_response(client, 501, "Not Implemented", request->cseq, NULL, NULL, 0);
+        break;
     }
+    LOG_WARN("rtsp", "Unsupported method=%d uri=%.160s\n", request->method, request->uri);
+    return rtsp_send_response(client, 501, "Not Implemented", request->cseq, NULL, NULL, 0);
 }
 
 static void close_client(rtsp_instance_t *instance, size_t index)

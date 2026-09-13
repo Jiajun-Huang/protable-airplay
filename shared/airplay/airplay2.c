@@ -41,7 +41,7 @@ static uint64_t number(const bplist_t *p, uint32_t dict, const char *key, uint64
     uint64_t value;
     return bplist_uint(p, bplist_get(p, dict, key), &value) ? fallback : value;
 }
-static int info(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+int airplay2_info(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
 {
     uint8_t output[2048];
     bplist_writer_t w;
@@ -233,122 +233,147 @@ static int set_anchor(rtsp_instance_t *s,
     return status(c, r, 200, "OK");
 }
 
-int airplay2_handle(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, int *handled)
+int airplay2_record(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
 {
-    *handled = 1;
-    if (r->method == RTSP_METHOD_GET && !strcmp(r->uri, "/info"))
-        return info(s, c, r);
-    if (r->method == RTSP_METHOD_RECORD && c->encrypted && c->event_listener.handle != UINTPTR_MAX)
+    /* iOS may RECORD the control session before it supplies an audio stream. PTP
+     * anchors
+     * schedule audio once the subsequent stream SETUP arrives. */
+    os_mutex_lock(&s->state_lock);
+    int occupied = s->stream_owner && s->stream_owner != c;
+    if (s->stream_owner == c && s->stream.has_session)
+        s->stream.recording = 1;
+    os_mutex_unlock(&s->state_lock);
+    if (occupied)
+        return status(c, r, 453, "Not Enough Bandwidth");
+    LOG_DEBUG("airplay2", "Control session RECORD accepted\n");
+    return rtsp_send_response(
+        c, 200, "OK", r->cseq, "Audio-Latency: 0\r\nAudio-Jack-Status: connected\r\n", NULL, 0);
+}
+
+int airplay2_fairplay_setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    (void)s;
+    uint8_t response[FAIRPLAY_RESPONSE_MAX];
+    int size = fairplay_setup(&c->fairplay_stage, r->body, r->body_len, response, sizeof(response));
+    if (size < 0)
+        return status(c, r, 400, "Bad Request");
+    LOG_DEBUG("airplay2",
+              "FairPlay setup stage=%u request=%zu response=%d\n",
+              c->fairplay_stage,
+              r->body_len,
+              size);
+    return rtsp_send_response(c,
+                              200,
+                              "OK",
+                              r->cseq,
+                              "Content-Type: application/octet-stream\r\n",
+                              response,
+                              (size_t)size);
+}
+
+int airplay2_pair_setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    (void)s;
+    uint8_t response[512];
+    size_t size;
+    if (pairing_setup(&c->pairing, r->body, r->body_len, response, sizeof(response), &size))
+        return status(c, r, 400, "Bad Request");
+    int result = rtsp_send_response(
+        c, 200, "OK", r->cseq, "Content-Type: application/octet-stream\r\n", response, size);
+    if (!result && c->pairing.established)
     {
-        /* iOS may RECORD the control session before it supplies an audio stream.
-         * PTP anchors schedule audio once the subsequent stream SETUP arrives. */
-        os_mutex_lock(&s->state_lock);
-        int occupied = s->stream_owner && s->stream_owner != c;
-        if (s->stream_owner == c && s->stream.has_session)
-            s->stream.recording = 1;
-        os_mutex_unlock(&s->state_lock);
-        if (occupied)
-            return status(c, r, 453, "Not Enough Bandwidth");
-        LOG_DEBUG("airplay2", "Control session RECORD accepted\n");
-        return rtsp_send_response(
-            c, 200, "OK", r->cseq, "Audio-Latency: 0\r\nAudio-Jack-Status: connected\r\n", NULL, 0);
+        c->encrypted = 1;
+        LOG_INFO("airplay2", "Transient pairing established with %s\n", c->peer.ip);
     }
-    if (r->method == RTSP_METHOD_POST && !strcmp(r->uri, "/fp-setup"))
+    return result;
+}
+
+static int open_encrypted_plist(rtsp_client_t *c,
+                                const rtsp_request_t *r,
+                                bplist_t *p,
+                                int *response_result)
+{
+    if (!c->encrypted)
     {
-        uint8_t response[FAIRPLAY_RESPONSE_MAX];
-        int size =
-            fairplay_setup(&c->fairplay_stage, r->body, r->body_len, response, sizeof(response));
-        if (size < 0)
-            return status(c, r, 400, "Bad Request");
-        LOG_DEBUG("airplay2",
-                  "FairPlay setup stage=%u request=%zu response=%d\n",
-                  c->fairplay_stage,
-                  r->body_len,
-                  size);
-        return rtsp_send_response(c,
-                                  200,
-                                  "OK",
-                                  r->cseq,
-                                  "Content-Type: application/octet-stream\r\n",
-                                  response,
-                                  (size_t)size);
+        *response_result = status(c, r, 470, "Connection Authorization Required");
+        return -1;
     }
-    if (r->method == RTSP_METHOD_POST && !strcmp(r->uri, "/pair-setup"))
+    if (bplist_open(p, r->body, r->body_len))
     {
-        uint8_t response[512];
-        size_t size;
-        if (pairing_setup(&c->pairing, r->body, r->body_len, response, sizeof(response), &size))
-            return status(c, r, 400, "Bad Request");
-        int result = rtsp_send_response(
-            c, 200, "OK", r->cseq, "Content-Type: application/octet-stream\r\n", response, size);
-        if (!result && c->pairing.established)
-        {
-            c->encrypted = 1;
-            LOG_INFO("airplay2", "Transient pairing established with %s\n", c->peer.ip);
-        }
-        return result;
+        *response_result = status(c, r, 400, "Bad Request");
+        return -1;
     }
-    int binary = r->body_len >= 8 && !memcmp(r->body, "bplist00", 8);
-    if ((r->method == RTSP_METHOD_SETUP && binary) || r->method == RTSP_METHOD_SETRATEANCHORTIME ||
-        (r->method == RTSP_METHOD_FLUSHBUFFERED && binary))
-    {
-        if (!c->encrypted)
-            return status(c, r, 470, "Connection Authorization Required");
-        bplist_t p;
-        if (bplist_open(&p, r->body, r->body_len))
-            return status(c, r, 400, "Bad Request");
-        if (r->method == RTSP_METHOD_SETUP)
-            return setup(s, c, r, &p);
-        if (r->method == RTSP_METHOD_SETRATEANCHORTIME)
-            return set_anchor(s, c, r, &p);
-        uint64_t until, until_sequence;
-        if (bplist_uint(&p, bplist_get(&p, p.root, "flushUntilTS"), &until) || until > UINT32_MAX ||
-            bplist_uint(&p, bplist_get(&p, p.root, "flushUntilSeq"), &until_sequence) ||
-            until_sequence > 0xffffff)
-            return status(c, r, 400, "Bad Request");
-        os_mutex_lock(&s->state_lock);
-        if (s->stream_owner == c)
-        {
-            /* A seek may replace the RTP time base. The sequence boundary
-             * identifies old buffered records without filtering the new time base. */
-            s->stream.buffered_flush_sequence = (uint32_t)until_sequence;
-            s->stream.has_buffered_flush_sequence = 1;
-            s->stream.has_timestamp_floor = 0;
-            s->stream.anchor.playing = 0;
-            ++s->stream.flush_generation;
-        }
-        os_mutex_unlock(&s->state_lock);
-        LOG_DEBUG("airplay2",
-                  "FLUSHBUFFERED through sequence=%u RTP=%u\n",
-                  (uint32_t)until_sequence,
-                  (uint32_t)until);
-        return status(c, r, 200, "OK");
-    }
-    if (r->method == RTSP_METHOD_SETPEERS ||
-        (r->method == RTSP_METHOD_POST &&
-         (!strcmp(r->uri, "/feedback") || !strcmp(r->uri, "/audioMode") ||
-          !strcmp(r->uri, "/command"))))
-    {
-        if (!c->encrypted)
-            return status(c, r, 470, "Connection Authorization Required");
-        if (!strcmp(r->uri, "/feedback"))
-        {
-            uint8_t output[256];
-            bplist_writer_t w;
-            uint32_t refs[4];
-            size_t n = 0;
-            rtsp_stream_state_t stream;
-            rtsp_get_stream_state(s, &stream);
-            bplist_writer_init(&w, output, sizeof(output));
-            add_int(&w, refs, &n, "type", stream.session.stream_type);
-            add_int(&w, refs, &n, "sr", stream.session.sample_rate);
-            uint32_t dict = bplist_add_dict(&w, refs, 2);
-            uint32_t array = bplist_add_array(&w, &dict, 1);
-            uint32_t root[] = {bplist_add_string(&w, "streams"), array};
-            return plist_response(c, r, &w, bplist_add_dict(&w, root, 1));
-        }
-        return status(c, r, 200, "OK");
-    }
-    *handled = 0;
     return 0;
+}
+
+int airplay2_setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    bplist_t p;
+    int result;
+    return open_encrypted_plist(c, r, &p, &result) ? result : setup(s, c, r, &p);
+}
+
+int airplay2_set_rate_anchor_time(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    bplist_t p;
+    int result;
+    return open_encrypted_plist(c, r, &p, &result) ? result : set_anchor(s, c, r, &p);
+}
+
+int airplay2_flush_buffered(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    bplist_t p;
+    int result;
+    if (open_encrypted_plist(c, r, &p, &result))
+        return result;
+    uint64_t until, until_sequence;
+    if (bplist_uint(&p, bplist_get(&p, p.root, "flushUntilTS"), &until) || until > UINT32_MAX ||
+        bplist_uint(&p, bplist_get(&p, p.root, "flushUntilSeq"), &until_sequence) ||
+        until_sequence > 0xffffff)
+        return status(c, r, 400, "Bad Request");
+    os_mutex_lock(&s->state_lock);
+    if (s->stream_owner == c)
+    {
+        /* A seek may replace the RTP time base. The sequence boundary identifies old
+         *
+         * buffered records without filtering the new time base. */
+        s->stream.buffered_flush_sequence = (uint32_t)until_sequence;
+        s->stream.has_buffered_flush_sequence = 1;
+        s->stream.has_timestamp_floor = 0;
+        s->stream.anchor.playing = 0;
+        ++s->stream.flush_generation;
+    }
+    os_mutex_unlock(&s->state_lock);
+    LOG_DEBUG("airplay2",
+              "FLUSHBUFFERED through sequence=%u RTP=%u\n",
+              (uint32_t)until_sequence,
+              (uint32_t)until);
+    return status(c, r, 200, "OK");
+}
+
+int airplay2_feedback(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    if (!c->encrypted)
+        return status(c, r, 470, "Connection Authorization Required");
+    uint8_t output[256];
+    bplist_writer_t w;
+    uint32_t refs[4];
+    size_t n = 0;
+    rtsp_stream_state_t stream;
+    rtsp_get_stream_state(s, &stream);
+    bplist_writer_init(&w, output, sizeof(output));
+    add_int(&w, refs, &n, "type", stream.session.stream_type);
+    add_int(&w, refs, &n, "sr", stream.session.sample_rate);
+    uint32_t dict = bplist_add_dict(&w, refs, 2);
+    uint32_t array = bplist_add_array(&w, &dict, 1);
+    uint32_t root[] = {bplist_add_string(&w, "streams"), array};
+    return plist_response(c, r, &w, bplist_add_dict(&w, root, 1));
+}
+
+int airplay2_acknowledge(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
+{
+    (void)s;
+    if (!c->encrypted)
+        return status(c, r, 470, "Connection Authorization Required");
+    return status(c, r, 200, "OK");
 }
