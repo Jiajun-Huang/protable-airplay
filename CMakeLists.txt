@@ -16,129 +16,15 @@ set(AIRPLAY_PLATFORM_INCLUDE_DIRS "" CACHE STRING "Board, FreeRTOS, and lwIP inc
 set(AIRPLAY_MBEDTLS_SOURCE_DIR "" CACHE PATH "Existing mbedTLS 2.28 source directory")
 option(AIRPLAY_ENABLE_FDK_AAC "Build and link the FDK-AAC decoder dependency" ON)
 
-# A board project can supply its configured mbedcrypto target before add_subdirectory.
-if(NOT TARGET mbedcrypto)
-    # mbedTLS 2.28 declares an older minimum; CMake 4 requires this policy floor.
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
-    set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
-    if(AIRPLAY_MBEDTLS_SOURCE_DIR)
-        add_subdirectory("${AIRPLAY_MBEDTLS_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/mbedtls")
-    elseif(AIRPLAY_PLATFORM STREQUAL "embedded")
-        message(FATAL_ERROR "Embedded: supply a board-configured mbedcrypto target or AIRPLAY_MBEDTLS_SOURCE_DIR")
-    else()
-        include(FetchContent)
-        if(POLICY CMP0135)
-            cmake_policy(SET CMP0135 NEW)
-        endif()
-        FetchContent_Declare(mbedtls
-            URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v2.28.8.tar.gz)
-        FetchContent_MakeAvailable(mbedtls)
-    endif()
-endif()
-
-# The shared crypto layer uses mbedTLS's fixed-buffer allocator. The mbedcrypto
-# target must be built with the same memory and threading configuration.
-get_target_property(AIRPLAY_MBEDCRYPTO_ALIAS mbedcrypto ALIASED_TARGET)
-if(AIRPLAY_MBEDCRYPTO_ALIAS)
-    set(AIRPLAY_MBEDCRYPTO_TARGET ${AIRPLAY_MBEDCRYPTO_ALIAS})
-else()
-    set(AIRPLAY_MBEDCRYPTO_TARGET mbedcrypto)
-endif()
-get_target_property(AIRPLAY_MBEDCRYPTO_IMPORTED ${AIRPLAY_MBEDCRYPTO_TARGET} IMPORTED)
-if(AIRPLAY_MBEDCRYPTO_IMPORTED)
-    message(FATAL_ERROR
-        "The mbedcrypto target must be built from source with the AirPlay static allocator settings")
-endif()
-target_include_directories(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
-    "${CMAKE_CURRENT_SOURCE_DIR}/platform"
-    "${CMAKE_CURRENT_SOURCE_DIR}/shared/crypto/mbedtls")
-target_compile_definitions(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
-    MBEDTLS_PLATFORM_MEMORY=1
-    MBEDTLS_MEMORY_BUFFER_ALLOC_C=1
-    MBEDTLS_THREADING_C=1
-    MBEDTLS_THREADING_ALT=1)
-
-if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
-    include(FetchContent)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-    set(FDK_AAC_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
-    set(FDK_AAC_INSTALL_PKGCONFIG_MODULE OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(fdk_aac
-        URL https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v2.0.3.tar.gz)
-    FetchContent_MakeAvailable(fdk_aac)
-endif()
-
-add_library(airplay_core STATIC
-    shared/service/server.c
-    shared/airplay/airplay_auth.c
-    shared/airplay/airplay_discovery.c
-    shared/airplay/airplay_rtsp.c
-    shared/airplay/airplay2.c
-    shared/airplay/fairplay.c
-    shared/airplay/pairing.c
-    shared/audio/audio_pipeline.c
-    shared/audio/buffered_audio.c
-    shared/audio/playout.c
-    shared/codec/aac_decoder.c
-    shared/codec/alac_decoder.c
-    shared/codec/alac.c
-    shared/crypto/crypto.c
-    shared/crypto/crypto_memory.c
-    shared/protocol/bplist.c
-    shared/protocol/mdns.c
-    shared/protocol/rtp.c
-    shared/protocol/rtsp.c
-    shared/protocol/sdp.c
-    shared/sync/ntp_sync.c
-    shared/sync/ptp_sync.c
-    shared/util/log.c
-    shared/util/network_util.c)
-target_include_directories(airplay_core PUBLIC . shared platform)
-target_link_libraries(airplay_core PUBLIC mbedcrypto)
-if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
-    target_link_libraries(airplay_core PRIVATE FDK-AAC::fdk-aac)
-    target_compile_definitions(airplay_core PRIVATE AIRPLAY_ENABLE_FDK_AAC=1)
-endif()
-if(NOT WIN32)
-    target_link_libraries(airplay_core PUBLIC m)
-endif()
-
-if(AIRPLAY_PLATFORM STREQUAL "windows")
-    add_library(airplay_platform OBJECT platform/windows/net.c platform/windows/os.c platform/windows/audio.c)
-    target_link_libraries(airplay_platform PUBLIC ws2_32 winmm)
-    add_executable(airplay_player platform/windows/main.c)
-    target_link_libraries(airplay_player PRIVATE airplay_core airplay_platform iphlpapi)
-elseif(AIRPLAY_PLATFORM STREQUAL "apple" OR AIRPLAY_PLATFORM STREQUAL "linux")
-    find_package(Threads REQUIRED)
-    add_library(airplay_platform OBJECT platform/${AIRPLAY_PLATFORM}/net.c
-        platform/${AIRPLAY_PLATFORM}/os.c platform/${AIRPLAY_PLATFORM}/audio.c)
-    target_link_libraries(airplay_platform PUBLIC Threads::Threads)
-    if(AIRPLAY_PLATFORM STREQUAL "apple")
-        find_library(AUDIO_TOOLBOX AudioToolbox REQUIRED)
-        target_link_libraries(airplay_platform PUBLIC "${AUDIO_TOOLBOX}")
-    else()
-        find_package(ALSA REQUIRED)
-        target_link_libraries(airplay_platform PUBLIC ALSA::ALSA)
-    endif()
-    add_executable(airplay_player platform/${AIRPLAY_PLATFORM}/main.c)
-    target_link_libraries(airplay_player PRIVATE airplay_core airplay_platform)
-elseif(AIRPLAY_PLATFORM STREQUAL "embedded")
-    add_library(airplay_platform OBJECT platform/embedded/net.c platform/embedded/os.c platform/embedded/audio.c)
-    add_library(airplay_embedded STATIC platform/embedded/runtime.c)
-    target_include_directories(airplay_embedded PRIVATE ${AIRPLAY_PLATFORM_INCLUDE_DIRS})
-    target_link_libraries(airplay_embedded PUBLIC airplay_core airplay_platform)
-else()
+if(NOT AIRPLAY_PLATFORM MATCHES "^(windows|apple|linux|embedded)$")
     message(FATAL_ERROR "Unknown AIRPLAY_PLATFORM: ${AIRPLAY_PLATFORM}")
 endif()
+
+add_subdirectory(shared)
+add_subdirectory(platform/${AIRPLAY_PLATFORM})
 target_include_directories(airplay_platform PUBLIC . shared platform PRIVATE ${AIRPLAY_PLATFORM_INCLUDE_DIRS})
-if(AIRPLAY_PLATFORM STREQUAL "embedded")
-    target_compile_definitions(airplay_core PUBLIC AIRPLAY_TARGET_EMBEDDED=1)
-    target_compile_definitions(airplay_platform PUBLIC AIRPLAY_TARGET_EMBEDDED=1)
+if(TARGET airplay_player)
+    set_target_properties(airplay_player PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
 if(NOT AIRPLAY_PLATFORM STREQUAL "embedded")
