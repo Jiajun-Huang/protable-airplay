@@ -102,7 +102,9 @@ add_subdirectory(path/to/airplay)
 target_link_libraries(firmware PRIVATE airplay_embedded)
 ```
 
-Here, `firmware` is the board's executable target and the include variables refer to its SDK directories. As an alternative to supplying `mbedcrypto`, set `AIRPLAY_MBEDTLS_SOURCE_DIR` to a source tree configured for the board. Build the firmware with its normal CMake toolchain and build commands.
+Here, `firmware` is the board's executable target and the include variables refer to its SDK directories. The `mbedcrypto` target must be built from source so this project can enable the fixed-buffer allocator and its thread-safe adapter. As an alternative to supplying that target, set `AIRPLAY_MBEDTLS_SOURCE_DIR` to an mbedTLS 2.28 source tree configured for the board. Build the firmware with its normal CMake toolchain and build commands.
+
+Shared code does not call `malloc`, `calloc`, `realloc`, or `free`. mbedTLS allocations use a statically reserved buffer whose default size is 64 KiB; override `AIRPLAY_CRYPTO_MEMORY_SIZE` consistently if the board needs a different capacity. Platform libraries, lwIP, FreeRTOS, and an optional AAC backend retain their own allocation policies.
 
 Implement the four audio functions declared in [board_audio.h](platform/embedded/board_audio.h), plus `airplay_board_time_us` from [runtime.h](platform/embedded/runtime.h). The clock must return Unix UTC microseconds. Audio writes must copy or consume interleaved 16-bit PCM before returning; queued DMA frames must be included in the output-delay estimate.
 

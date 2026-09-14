@@ -80,6 +80,9 @@
 #ifndef ALAC_MAX_CONTEXTS
 #define ALAC_MAX_CONTEXTS 1
 #endif
+#ifndef AIRPLAY_CRYPTO_MEMORY_SIZE
+#define AIRPLAY_CRYPTO_MEMORY_SIZE (64 * 1024) /* Fixed mbedTLS allocation pool. */
+#endif
 #ifndef AIRPLAY_PLAYOUT_PACKETS
 #define AIRPLAY_PLAYOUT_PACKETS 512 /* Compressed packets; must hold the sender's advance audio */
 #endif

@@ -38,6 +38,30 @@ if(NOT TARGET mbedcrypto)
     endif()
 endif()
 
+# The shared crypto layer uses mbedTLS's fixed-buffer allocator. The mbedcrypto
+# target must be built with the same memory and threading configuration.
+get_target_property(AIRPLAY_MBEDCRYPTO_ALIAS mbedcrypto ALIASED_TARGET)
+if(AIRPLAY_MBEDCRYPTO_ALIAS)
+    set(AIRPLAY_MBEDCRYPTO_TARGET ${AIRPLAY_MBEDCRYPTO_ALIAS})
+else()
+    set(AIRPLAY_MBEDCRYPTO_TARGET mbedcrypto)
+endif()
+get_target_property(AIRPLAY_MBEDCRYPTO_IMPORTED ${AIRPLAY_MBEDCRYPTO_TARGET} IMPORTED)
+if(AIRPLAY_MBEDCRYPTO_IMPORTED)
+    message(FATAL_ERROR
+        "The mbedcrypto target must be built from source with the AirPlay static allocator settings")
+endif()
+target_include_directories(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/platform"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared/crypto/mbedtls")
+target_compile_definitions(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
+    MBEDTLS_PLATFORM_MEMORY=1
+    MBEDTLS_MEMORY_BUFFER_ALLOC_C=1
+    MBEDTLS_THREADING_C=1
+    MBEDTLS_THREADING_ALT=1)
+
 if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
     include(FetchContent)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -64,6 +88,7 @@ add_library(airplay_core STATIC
     shared/codec/alac_decoder.c
     shared/codec/alac.c
     shared/crypto/crypto.c
+    shared/crypto/crypto_memory.c
     shared/protocol/bplist.c
     shared/protocol/mdns.c
     shared/protocol/rtp.c

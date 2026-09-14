@@ -1,4 +1,5 @@
 #include "pairing.h"
+#include "crypto/crypto_memory.h"
 #include <mbedtls/bignum.h>
 #include <mbedtls/chachapoly.h>
 #include <mbedtls/ctr_drbg.h>
@@ -7,7 +8,6 @@
 #include <mbedtls/hkdf.h>
 #include <mbedtls/platform_util.h>
 #include <mbedtls/sha512.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define SRP_BYTES 384
@@ -24,6 +24,9 @@ typedef struct
     uint8_t salt[16], public_key[SRP_BYTES];
 } srp_t;
 
+_Static_assert(sizeof(srp_t) <= PAIRING_SRP_STORAGE_SIZE,
+               "PAIRING_SRP_STORAGE_SIZE is too small for SRP state");
+
 static void free_srp(pairing_t *p)
 {
     srp_t *s = p->srp;
@@ -33,7 +36,6 @@ static void free_srp(pairing_t *p)
     mbedtls_mpi_free(&s->v);
     mbedtls_mpi_free(&s->b);
     mbedtls_platform_zeroize(s, sizeof(*s));
-    free(s);
     p->srp = NULL;
 }
 void pairing_close(pairing_t *p)
@@ -123,9 +125,8 @@ static int begin(pairing_t *p)
     mbedtls_ctr_drbg_init(&rng);
     uint8_t hash[64], padded_g[SRP_BYTES] = {0}, random[32];
     pairing_close(p);
-    srp_t *s = calloc(1, sizeof(*s));
-    if (!s)
-        goto done;
+    srp_t *s = (srp_t *)p->srp_storage.bytes;
+    memset(s, 0, sizeof(*s));
     p->srp = s;
     mbedtls_mpi_init(&s->n);
     mbedtls_mpi_init(&s->v);
@@ -269,7 +270,7 @@ int pairing_setup(
 {
     uint8_t state, flags = 0, method = 0;
     size_t n, used = 0;
-    if (!p || !in || !out || !out_size || capacity < 6)
+    if (crypto_memory_init() != 0 || !p || !in || !out || !out_size || capacity < 6)
         return -1;
     *out_size = 0;
     if (tlv_get(in, size, 6, &state, 1, &n) || n != 1 || p->established)

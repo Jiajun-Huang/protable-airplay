@@ -1,10 +1,14 @@
 #include "airplay/fairplay.h"
 #include "airplay/pairing.h"
+#include "airplay_config.h"
+#include "crypto/crypto_memory.h"
 #include "protocol/bplist.h"
 #include "sync/ptp_sync.h"
 #include "util/log.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include <mbedtls/platform.h>
 
 #define CHECK(x)                                                                                   \
     do                                                                                             \
@@ -16,6 +20,13 @@
         }                                                                                          \
     } while (0)
 static uint64_t now = 10000000;
+
+static void test_static_crypto_memory(void)
+{
+    CHECK(crypto_memory_init() == 0);
+    CHECK(mbedtls_calloc(1, AIRPLAY_CRYPTO_MEMORY_SIZE + 1) == NULL);
+}
+
 uint64_t os_time_us(void)
 {
     return now;
@@ -127,12 +138,15 @@ static void test_records(void)
 }
 static void test_pairing_rejection(void)
 {
-    pairing_t p = {0};
+    pairing_t p = {0}, second = {0};
     uint8_t out[512];
     size_t length;
     const uint8_t m1[] = {6, 1, 1, 0, 1, 0, 19, 1, 16};
     CHECK(!pairing_setup(&p, m1, sizeof(m1), out, sizeof(out), &length));
     CHECK(length > 384 && out[0] == 6 && out[2] == 2 && !p.established);
+    CHECK(!pairing_setup(&second, m1, sizeof(m1), out, sizeof(out), &length));
+    CHECK(second.srp && length > 384);
+    pairing_close(&second);
     uint8_t bad_m3[72] = {6, 1, 3, 3, 1, 0, 4, 64};
     CHECK(!pairing_setup(&p, bad_m3, sizeof(bad_m3), out, sizeof(out), &length));
     CHECK(length == 6 && out[2] == 4 && out[3] == 7 && !p.established && !p.srp);
@@ -217,6 +231,7 @@ static void test_fairplay(void)
 
 int main(void)
 {
+    test_static_crypto_memory();
     test_plist();
     test_records();
     test_pairing_rejection();
@@ -224,5 +239,6 @@ int main(void)
     test_fairplay();
     LOG_INFO("test",
              "AirPlay 2 plist, authenticated records, pairing rejection and PTP checks passed\n");
+    crypto_memory_deinit();
     return 0;
 }

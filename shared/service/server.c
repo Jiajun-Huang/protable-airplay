@@ -1,4 +1,5 @@
 #include "service/server.h"
+#include "crypto/crypto_memory.h"
 #include "util/network_util.h"
 
 #include <ctype.h>
@@ -46,8 +47,13 @@ int airplay_server_init(airplay_server_t *server, const airplay_config_t *config
     if (!server || !valid_config(config))
         return -1;
     memset(server, 0, sizeof(*server));
-    if (os_mutex_init(&server->control_lock) != 0)
+    if (crypto_memory_init() != 0)
         return -1;
+    if (os_mutex_init(&server->control_lock) != 0)
+    {
+        crypto_memory_deinit();
+        return -1;
+    }
     server->initialized = 1;
     server->config = *config;
     if (rtsp_server_create(&server->rtsp, AIRPLAY_RTSP_PORT) != 0)
@@ -227,6 +233,7 @@ void airplay_server_deinit(airplay_server_t *server)
     if (server->rtsp_initialized)
         rtsp_server_close(&server->rtsp);
     os_mutex_deinit(&server->control_lock);
+    crypto_memory_deinit();
     server->initialized = server->discovery_initialized = 0;
     server->audio_initialized = server->rtsp_initialized = 0;
 }

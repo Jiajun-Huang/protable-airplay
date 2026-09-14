@@ -1,4 +1,5 @@
 #include "crypto/crypto.h"
+#include "crypto/crypto_memory.h"
 #include "util/log.h"
 
 #include <stdio.h>
@@ -41,7 +42,7 @@ int crypto_rsa_decrypt_aes_key(const uint8_t *encrypted_key,
                                size_t encrypted_len,
                                uint8_t *decrypted_key)
 {
-    if (!encrypted_key || !decrypted_key || encrypted_len == 0)
+    if (crypto_memory_init() != 0 || !encrypted_key || !decrypted_key || encrypted_len == 0)
         return -1;
 
     int rc = -1;

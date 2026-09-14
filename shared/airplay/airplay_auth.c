@@ -1,4 +1,5 @@
 #include "airplay_auth.h"
+#include "crypto/crypto_memory.h"
 
 #include <string.h>
 
@@ -81,7 +82,8 @@ int apple_challenge_response(const char *challenge,
                              size_t response_out_len,
                              airplay_auth_scratch_t *scratch)
 {
-    if (!challenge || !ip_addr || !mac_addr || !response_out || response_out_len == 0 || !scratch)
+    if (crypto_memory_init() != 0 || !challenge || !ip_addr || !mac_addr || !response_out ||
+        response_out_len == 0 || !scratch)
         return -1;
 
     size_t challenge_len = 0;
