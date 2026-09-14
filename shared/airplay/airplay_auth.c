@@ -1,12 +1,13 @@
 #include "airplay_auth.h"
+#include "crypto/crypto_memory.h"
 
 #include <string.h>
 
+#include <mbedtls/base64.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/rsa.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/base64.h>
 
 static const char airport_private_key[] =
     "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -58,15 +59,15 @@ static int base64_decode_padded(const char *str,
     padded[padded_len] = '\0';
 
     size_t decoded_len = 0;
-    if (mbedtls_base64_decode(NULL, 0, &decoded_len,
-                              (const unsigned char *)padded, padded_len) != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
+    if (mbedtls_base64_decode(NULL, 0, &decoded_len, (const unsigned char *)padded, padded_len) !=
+        MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
         return -1;
 
     if (decoded_len > out_size)
         return -1;
 
-    if (mbedtls_base64_decode(out, out_size, &decoded_len,
-                              (const unsigned char *)padded, padded_len) != 0)
+    if (mbedtls_base64_decode(
+            out, out_size, &decoded_len, (const unsigned char *)padded, padded_len) != 0)
         return -1;
 
     if (out_len)
@@ -81,7 +82,8 @@ int apple_challenge_response(const char *challenge,
                              size_t response_out_len,
                              airplay_auth_scratch_t *scratch)
 {
-    if (!challenge || !ip_addr || !mac_addr || !response_out || response_out_len == 0 || !scratch)
+    if (crypto_memory_init() != 0 || !challenge || !ip_addr || !mac_addr || !response_out ||
+        response_out_len == 0 || !scratch)
         return -1;
 
     size_t challenge_len = 0;
@@ -115,15 +117,13 @@ int apple_challenge_response(const char *challenge,
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
 
-    ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                                (const unsigned char *)pers, strlen(pers));
+    ret = mbedtls_ctr_drbg_seed(
+        &ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
     if (ret != 0)
         goto cleanup;
 
-    ret = mbedtls_pk_parse_key(&pk_ctx,
-                               (const unsigned char *)airport_private_key,
-                               sizeof(airport_private_key),
-                               NULL, 0);
+    ret = mbedtls_pk_parse_key(
+        &pk_ctx, (const unsigned char *)airport_private_key, sizeof(airport_private_key), NULL, 0);
     if (ret != 0)
         goto cleanup;
 
@@ -132,14 +132,18 @@ int apple_challenge_response(const char *challenge,
 
     uint8_t signature[256];
     ret = mbedtls_rsa_pkcs1_encrypt(rsa,
-                                    mbedtls_ctr_drbg_random, &ctr_drbg,
+                                    mbedtls_ctr_drbg_random,
+                                    &ctr_drbg,
                                     MBEDTLS_RSA_PRIVATE,
-                                    message_len, message, signature);
+                                    message_len,
+                                    message,
+                                    signature);
     if (ret != 0)
         goto cleanup;
 
     size_t encoded_len = 0;
-    if (mbedtls_base64_encode(NULL, 0, &encoded_len, signature, rsa->len) != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
+    if (mbedtls_base64_encode(NULL, 0, &encoded_len, signature, rsa->len) !=
+        MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
     {
         ret = -1;
         goto cleanup;
@@ -151,11 +155,9 @@ int apple_challenge_response(const char *challenge,
         goto cleanup;
     }
 
-    if (mbedtls_base64_encode((unsigned char *)response_out,
-                              response_out_len,
-                              &encoded_len,
-                              signature,
-                              rsa->len) != 0)
+    if (mbedtls_base64_encode(
+            (unsigned char *)response_out, response_out_len, &encoded_len, signature, rsa->len) !=
+        0)
     {
         ret = -1;
         goto cleanup;

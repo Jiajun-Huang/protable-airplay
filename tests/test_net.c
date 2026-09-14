@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "net.h"
+#include "util/log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,20 +10,28 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef SOCKET test_socket_t;
-#define test_close closesocket
+#define test_close   closesocket
 #define TEST_SHUT_WR SD_SEND
 #else
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <time.h>
+#include <unistd.h>
 typedef int test_socket_t;
-#define test_close close
+#define test_close   close
 #define TEST_SHUT_WR SHUT_WR
 #endif
 
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+#define CHECK(x)                                                                                   \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(x))                                                                                  \
+        {                                                                                          \
+            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            exit(1);                                                                               \
+        }                                                                                          \
+    } while (0)
 
 static uint64_t test_now_ms(void)
 {
@@ -64,8 +73,11 @@ int main(void)
     CHECK(net_udp_recv(&b, buffer, sizeof(buffer), NULL, 1000) == NET_TIMEOUT);
     CHECK(net_udp_recv(&b, buffer, sizeof(buffer), NULL, 1000) == 5);
     CHECK(memcmp(buffer, "after", 5) == 0);
-    net_close(&a); net_close(&a); net_close(&b);
-    CHECK(a.handle == UINTPTR_MAX && net_udp_recv(&a, buffer, sizeof(buffer), NULL, 0) == NET_ERROR);
+    net_close(&a);
+    net_close(&a);
+    net_close(&b);
+    CHECK(a.handle == UINTPTR_MAX &&
+          net_udp_recv(&a, buffer, sizeof(buffer), NULL, 0) == NET_ERROR);
 
     CHECK(net_tcp_listen(&listener, "127.0.0.1", 0) == 0);
     CHECK(net_tcp_accept(&listener, &client, &peer, 10) == NET_TIMEOUT);
@@ -86,13 +98,18 @@ int main(void)
     CHECK(net_tcp_send_all(&client, "response", 8, 1000) == 0);
     CHECK(recv(sender, buffer, sizeof(buffer), 0) == 8 && memcmp(buffer, "response", 8) == 0);
     /* Fill the local queue; one large write can succeed before backpressure. */
-    CHECK(setsockopt((test_socket_t)client.handle, SOL_SOCKET, SO_SNDBUF, (const char *)&small, sizeof(small)) == 0);
+    CHECK(setsockopt((test_socket_t)client.handle,
+                     SOL_SOCKET,
+                     SO_SNDBUF,
+                     (const char *)&small,
+                     sizeof(small)) == 0);
     char *large = calloc(1, 64 * 1024);
     CHECK(large != NULL);
     int send_result = 0;
     unsigned attempts;
     uint64_t send_started = test_now_ms();
-    for (attempts = 0; attempts < 1024 && send_result == 0; attempts++) {
+    for (attempts = 0; attempts < 1024 && send_result == 0; attempts++)
+    {
         send_result = net_tcp_send_all(&client, large, 64 * 1024, 50);
         CHECK(test_now_ms() - send_started < 2000);
     }
@@ -109,8 +126,9 @@ int main(void)
     /* A closed write side must return an error without terminating on SIGPIPE. */
     CHECK(shutdown((test_socket_t)client.handle, TEST_SHUT_WR) == 0);
     CHECK(net_tcp_send_all(&client, "x", 1, 1000) == NET_ERROR);
-    net_close(&client); net_close(&listener);
+    net_close(&client);
+    net_close(&listener);
     net_deinit();
-    puts("Network contract checks passed");
+    LOG_INFO("test", "Network contract checks passed\n");
     return 0;
 }

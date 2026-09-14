@@ -5,14 +5,14 @@
 #include <limits.h>
 #include <string.h>
 
-#include <sys/socket.h>
-#include <sys/select.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #include <time.h>
+#include <unistd.h>
 
 static uint32_t now_ms(void)
 {
@@ -137,8 +137,8 @@ int net_udp_bind(net_socket_t *sock, uint16_t port)
     return open_bound(sock, NULL, port, SOCK_DGRAM);
 }
 
-static int wait_sockets(const net_socket_t *sockets, size_t count,
-                        uint8_t *ready, int timeout_ms, int writing)
+static int wait_sockets(
+    const net_socket_t *sockets, size_t count, uint8_t *ready, int timeout_ms, int writing)
 {
     uint32_t start = now_ms();
     size_t i;
@@ -174,8 +174,7 @@ static int wait_sockets(const net_socket_t *sockets, size_t count,
             tv.tv_usec = (left % 1000) * 1000;
             tv_ptr = &tv;
         }
-        result = select(max_fd + 1, writing ? NULL : &fds,
-                        writing ? &fds : NULL, NULL, tv_ptr);
+        result = select(max_fd + 1, writing ? NULL : &fds, writing ? &fds : NULL, NULL, tv_ptr);
         if (result == 0)
             return 0;
         if (result > 0)
@@ -183,8 +182,7 @@ static int wait_sockets(const net_socket_t *sockets, size_t count,
             int total = 0;
             for (i = 0; i < count; i++)
             {
-                if (socket_valid(&sockets[i]) &&
-                    FD_ISSET((int)sockets[i].handle, &fds))
+                if (socket_valid(&sockets[i]) && FD_ISSET((int)sockets[i].handle, &fds))
                 {
                     ready[i] = 1;
                     total++;
@@ -208,12 +206,10 @@ static int wait_one(net_socket_t *sock, int timeout_ms, int writing)
 {
     uint8_t ready;
     int result = wait_sockets(sock, 1, &ready, timeout_ms, writing);
-    return result > 0 ? 0 : result == 0 ? NET_TIMEOUT
-                                        : NET_ERROR;
+    return result > 0 ? 0 : result == 0 ? NET_TIMEOUT : NET_ERROR;
 }
 
-int net_tcp_accept(net_socket_t *listener, net_socket_t *client,
-                   net_addr_t *peer, int timeout_ms)
+int net_tcp_accept(net_socket_t *listener, net_socket_t *client, net_addr_t *peer, int timeout_ms)
 {
     struct sockaddr_in addr;
     socklen_t length = sizeof(addr);
@@ -292,8 +288,7 @@ int net_tcp_send_all(net_socket_t *sock, const void *data, size_t length, int ti
     return 0;
 }
 
-int net_udp_recv(net_socket_t *sock, void *data, size_t capacity,
-                 net_addr_t *peer, int timeout_ms)
+int net_udp_recv(net_socket_t *sock, void *data, size_t capacity, net_addr_t *peer, int timeout_ms)
 {
     struct sockaddr_in addr;
     int result;
@@ -323,16 +318,19 @@ int net_udp_recv(net_socket_t *sock, void *data, size_t capacity,
     return result;
 }
 
-int net_udp_send(net_socket_t *sock, const void *data, size_t length,
-                 const net_addr_t *peer)
+int net_udp_send(net_socket_t *sock, const void *data, size_t length, const net_addr_t *peer)
 {
     struct sockaddr_in addr;
     int result;
-    if (!socket_valid(sock) || (!data && length) || length > INT_MAX || !peer ||
-        peer->port == 0 || make_address(&addr, peer->ip, peer->port) != 0)
+    if (!socket_valid(sock) || (!data && length) || length > INT_MAX || !peer || peer->port == 0 ||
+        make_address(&addr, peer->ip, peer->port) != 0)
         return NET_ERROR;
-    result = (int)sendto((int)sock->handle, data ? (const char *)data : "",
-                         (int)length, 0, (struct sockaddr *)&addr, sizeof(addr));
+    result = (int)sendto((int)sock->handle,
+                         data ? (const char *)data : "",
+                         (int)length,
+                         0,
+                         (struct sockaddr *)&addr,
+                         sizeof(addr));
     if (result < 0)
         return would_block(errno) ? NET_TIMEOUT : NET_ERROR;
     return result;
@@ -344,18 +342,21 @@ int net_udp_join(net_socket_t *sock, const char *group, const char *interface_ip
     struct ip_mreq membership;
     int fd;
     unsigned char ttl = 255;
-    if (!socket_valid(sock) || !group ||
-        make_address(&group_addr, group, 0) != 0 ||
+    if (!socket_valid(sock) || !group || make_address(&group_addr, group, 0) != 0 ||
         make_address(&interface_addr, interface_ip, 0) != 0 ||
         (ntohl(group_addr.sin_addr.s_addr) & 0xf0000000UL) != 0xe0000000UL)
         return NET_ERROR;
     fd = (int)sock->handle;
     membership.imr_multiaddr = group_addr.sin_addr;
     membership.imr_interface = interface_addr.sin_addr;
-    if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
-                   (const char *)&interface_addr.sin_addr, sizeof(interface_addr.sin_addr)) != 0 ||
+    if (setsockopt(fd,
+                   IPPROTO_IP,
+                   IP_MULTICAST_IF,
+                   (const char *)&interface_addr.sin_addr,
+                   sizeof(interface_addr.sin_addr)) != 0 ||
         setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, (const char *)&ttl, sizeof(ttl)) != 0 ||
-        setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&membership, sizeof(membership)) != 0)
+        setsockopt(
+            fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&membership, sizeof(membership)) != 0)
         return NET_ERROR;
     return 0;
 }

@@ -11,7 +11,7 @@
 <text x="188" y="198" class="body" text-anchor="middle" >RECORD / FLUSH boundaries</text>
 <rect x="408" y="112" width="288" height="105" rx="12" fill="#edf3fd" stroke="#ccdcf7"/>
 <text x="552" y="143" class="heading" text-anchor="middle" >Sender clock</text>
-<text x="552" y="172" class="body" text-anchor="middle" >RAOP timing exchange</text>
+<text x="552" y="172" class="body" text-anchor="middle" >NTP / PTP timing exchange</text>
 <text x="552" y="198" class="body" text-anchor="middle" >RTP timestamp + sync anchor</text>
 <rect x="760" y="112" width="324" height="105" rx="12" fill="#edf3fd" stroke="#ccdcf7"/>
 <text x="922" y="143" class="heading" text-anchor="middle" >Output queue</text>
@@ -40,7 +40,7 @@
 <path d="M657 369 H676" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
 <rect x="678" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>
 <text x="774" y="344" class="heading" text-anchor="middle" >4  Decode</text>
-<text x="774" y="374" class="body" text-anchor="middle" >AES → ALAC / PCM</text>
+<text x="774" y="374" class="body" text-anchor="middle" >Decrypt → ALAC / AAC / PCM</text>
 <text x="774" y="399" class="body" text-anchor="middle" >Apply volume</text>
 <path d="M871 369 H890" fill="none" stroke="#60748e" stroke-width="1.8" stroke-linejoin="round"  marker-end="url(#arrow)"/>
 <rect x="892" y="312" width="192" height="114" rx="12" fill="#fff" stroke="#d9e2ef"/>

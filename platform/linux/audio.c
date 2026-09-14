@@ -15,8 +15,7 @@ struct audio_device
     uint8_t channels;
 };
 
-int audio_open(audio_device_t **device, uint32_t sample_rate,
-               uint8_t channels, uint8_t bits)
+int audio_open(audio_device_t **device, uint32_t sample_rate, uint8_t channels, uint8_t bits)
 {
     audio_device_t *output;
     if (!device)
@@ -27,16 +26,19 @@ int audio_open(audio_device_t **device, uint32_t sample_rate,
     output = (audio_device_t *)calloc(1, sizeof(*output));
     if (!output)
         return -1;
-    if (snd_pcm_open(&output->pcm, "default", SND_PCM_STREAM_PLAYBACK,
-                     SND_PCM_NONBLOCK) < 0)
+    if (snd_pcm_open(&output->pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0)
     {
         free(output);
         return -1;
     }
     output->channels = channels;
-    if (snd_pcm_set_params(output->pcm, SND_PCM_FORMAT_S16,
-                           SND_PCM_ACCESS_RW_INTERLEAVED, channels,
-                           sample_rate, 1, AIRPLAY_ALSA_BUFFER_US) < 0)
+    if (snd_pcm_set_params(output->pcm,
+                           SND_PCM_FORMAT_S16,
+                           SND_PCM_ACCESS_RW_INTERLEAVED,
+                           channels,
+                           sample_rate,
+                           1,
+                           AIRPLAY_ALSA_BUFFER_US) < 0)
     {
         audio_close(output);
         return -1;
@@ -71,8 +73,7 @@ int audio_delay_frames(audio_device_t *device)
         return 0;
     if (snd_pcm_delay(device->pcm, &frames) < 0)
         return -1;
-    return frames < 0 ? 0 : frames > INT_MAX ? INT_MAX
-                                             : (int)frames;
+    return frames < 0 ? 0 : frames > INT_MAX ? INT_MAX : (int)frames;
 }
 
 int audio_write(audio_device_t *device, const int16_t *samples, size_t sample_count)
@@ -86,8 +87,8 @@ int audio_write(audio_device_t *device, const int16_t *samples, size_t sample_co
     deadline = monotonic_ms() + 120;
     while (written < sample_count)
     {
-        snd_pcm_sframes_t frames = snd_pcm_writei(device->pcm, samples + written,
-                                                  (sample_count - written) / device->channels);
+        snd_pcm_sframes_t frames = snd_pcm_writei(
+            device->pcm, samples + written, (sample_count - written) / device->channels);
         if (frames > 0)
         {
             written += (size_t)frames * device->channels;

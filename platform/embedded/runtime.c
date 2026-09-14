@@ -56,8 +56,12 @@ int airplay_platform_start(const airplay_config_t *config)
     {
         services[started].entry = entries[started];
         services[started].done_bit = (EventBits_t)1 << started;
-        if (xTaskCreate(service_task, names[started], depths[started], &services[started],
-                        tskIDLE_PRIORITY + AIRPLAY_TASK_PRIORITY_OFFSET, &tasks[started]) != pdPASS)
+        if (xTaskCreate(service_task,
+                        names[started],
+                        depths[started],
+                        &services[started],
+                        tskIDLE_PRIORITY + AIRPLAY_TASK_PRIORITY_OFFSET,
+                        &tasks[started]) != pdPASS)
         {
             airplay_platform_stop();
             return -1;

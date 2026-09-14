@@ -10,8 +10,10 @@ struct audio_device
     uint8_t channels;
 };
 
-int audio_open(audio_device_t **device, uint32_t sample_rate,
-               uint8_t channels, uint8_t bits_per_sample)
+int audio_open(audio_device_t **device,
+               uint32_t sample_rate,
+               uint8_t channels,
+               uint8_t bits_per_sample)
 {
     audio_device_t *output;
     if (!device)

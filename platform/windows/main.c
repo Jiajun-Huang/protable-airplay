@@ -1,7 +1,7 @@
-#include "server.h"
 #include "net.h"
 #include "os.h"
-#include "log.h"
+#include "service/server.h"
+#include "util/log.h"
 
 #include <winsock2.h>
 #include <windows.h>
@@ -24,8 +24,7 @@ static BOOL WINAPI console_handler(DWORD event)
 static int detect_identity(airplay_config_t *config)
 {
     ULONG size = 15000;
-    ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                  GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
     IP_ADAPTER_ADDRESSES *addresses = NULL;
     DWORD status = ERROR_NO_DATA;
     DWORD preferred_index = 0;
@@ -72,14 +71,18 @@ static int detect_identity(airplay_config_t *config)
                     host_ip = ntohl(ipv4->sin_addr.s_addr);
                     if (!host_ip || (host_ip >> 24) == 127 || (host_ip >> 16) == 0xa9fe)
                         continue;
-                    if (!InetNtopA(AF_INET, &ipv4->sin_addr, config->local_ip,
-                                   sizeof(config->local_ip)))
+                    if (!InetNtopA(
+                            AF_INET, &ipv4->sin_addr, config->local_ip, sizeof(config->local_ip)))
                         continue;
-                    snprintf(config->local_mac_hex, sizeof(config->local_mac_hex),
+                    snprintf(config->local_mac_hex,
+                             sizeof(config->local_mac_hex),
                              "%02X%02X%02X%02X%02X%02X",
-                             adapter->PhysicalAddress[0], adapter->PhysicalAddress[1],
-                             adapter->PhysicalAddress[2], adapter->PhysicalAddress[3],
-                             adapter->PhysicalAddress[4], adapter->PhysicalAddress[5]);
+                             adapter->PhysicalAddress[0],
+                             adapter->PhysicalAddress[1],
+                             adapter->PhysicalAddress[2],
+                             adapter->PhysicalAddress[3],
+                             adapter->PhysicalAddress[4],
+                             adapter->PhysicalAddress[5]);
                     result = 0;
                     break;
                 }
@@ -141,8 +144,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        if (strlen(argv[1]) >= sizeof(config.local_ip) ||
-            strlen(argv[2]) != 12 ||
+        if (strlen(argv[1]) >= sizeof(config.local_ip) || strlen(argv[2]) != 12 ||
             (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
         {
             LOG_ERROR("main", "Invalid IPv4, MAC_HEX, or device name length.\n");
@@ -163,8 +165,11 @@ int main(int argc, char **argv)
         LOG_ERROR("main", "Cannot register console stop handler.\n");
         goto server_done;
     }
-    LOG_INFO("main", "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
-             config.device_name, config.local_ip, config.local_mac_hex);
+    LOG_INFO("main",
+             "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
+             config.device_name,
+             config.local_ip,
+             config.local_mac_hex);
     for (started = 0; started < 3; ++started)
     {
         threads[started] = CreateThread(NULL, 0, entries[started], &server, 0, NULL);

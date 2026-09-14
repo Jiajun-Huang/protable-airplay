@@ -78,6 +78,18 @@ Real-device playback and user listening confirmed the final sound. Automated tes
 
 Embedded memory, stack usage, DMA consumption, and scheduling still require board validation. Linux speaker output and the macOS backend have not been validated on their target audio hardware.
 
+## AirPlay 2: Connection, Realtime Audio, and Buffered Seeking
+
+The first Windows milestone used an iPhone as a single sender. The control path initially completed transient SRP pairing and decrypted the next RTSP request, then disconnected at `POST /fp-setup`. That packet boundary was decisive: discovery and control-record encryption were already working, while the FairPlay setup handler was absent. Implementing the two version 3 setup exchanges allowed the session to proceed to binary-plist SETUP.
+
+iOS sent RECORD after the initial control SETUP and before the audio-stream SETUP. Treating that request as traditional RAOP returned an invalid-state response. The AirPlay 2 control session now accepts this order; the later stream SETUP establishes the audio owner and transport.
+
+Realtime type 96 audio then authenticated and decoded but remained silent. The sender supplied its playback anchor in an AirPlay 2 `0x57` UDP control packet. The receiver had ignored this packet, so queued ALAC never obtained a PTP deadline. Parsing its RTP timestamp, PTP nanoseconds, and clock identity completed the realtime scheduling path. The user confirmed audible playback, and a sustained session reached thousands of nonzero packets without reported gaps, late packets, or queue overflow.
+
+YouTube selected type 103 buffered AAC over TCP. Seeking changed the RTP timestamp base and sent FLUSHBUFFERED with a 24-bit `flushUntilSeq`. Filtering the new stream using the old RTP timestamp rejected valid post-seek audio. The receiver now discards buffered records through the sequence boundary, clears the old anchor, and accepts the new timestamp base. The TCP reader also continues from the two-byte length into the record body in one polling call, allowing stale buffered data to drain in batches instead of one packet per scheduler iteration.
+
+The final iPhone session exercised forward and backward YouTube seeks. Each FLUSH crossed its advertised sequence boundary and resumed nonzero AAC output. Regression coverage includes both FairPlay exchanges, encrypted RTSP framing, RECORD-before-stream-SETUP, `0x57` anchor scheduling, timestamp-base changes, 24-bit sequence wrap, and FLUSH arriving while a TCP record is partial. Nine Windows tests passed. Long-term device identity, pair-verify, multi-device playback, and target-hardware validation remain outside this single-sender milestone.
+
 ## YouTube: Audio Ahead of Video
 
 The same iPhone-to-Windows setup later produced a roughly fixed audio lead during YouTube playback. The pipeline decoded and submitted packets on arrival. It did not process the control packet's clock anchor, preserve the sender's SETUP timing port, or complete timing request/reply exchanges. Correct PCM therefore reached the device at the wrong time.

@@ -38,6 +38,30 @@ if(NOT TARGET mbedcrypto)
     endif()
 endif()
 
+# The shared crypto layer uses mbedTLS's fixed-buffer allocator. The mbedcrypto
+# target must be built with the same memory and threading configuration.
+get_target_property(AIRPLAY_MBEDCRYPTO_ALIAS mbedcrypto ALIASED_TARGET)
+if(AIRPLAY_MBEDCRYPTO_ALIAS)
+    set(AIRPLAY_MBEDCRYPTO_TARGET ${AIRPLAY_MBEDCRYPTO_ALIAS})
+else()
+    set(AIRPLAY_MBEDCRYPTO_TARGET mbedcrypto)
+endif()
+get_target_property(AIRPLAY_MBEDCRYPTO_IMPORTED ${AIRPLAY_MBEDCRYPTO_TARGET} IMPORTED)
+if(AIRPLAY_MBEDCRYPTO_IMPORTED)
+    message(FATAL_ERROR
+        "The mbedcrypto target must be built from source with the AirPlay static allocator settings")
+endif()
+target_include_directories(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+    "${CMAKE_CURRENT_SOURCE_DIR}/platform"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shared/crypto/mbedtls")
+target_compile_definitions(${AIRPLAY_MBEDCRYPTO_TARGET} PUBLIC
+    MBEDTLS_PLATFORM_MEMORY=1
+    MBEDTLS_MEMORY_BUFFER_ALLOC_C=1
+    MBEDTLS_THREADING_C=1
+    MBEDTLS_THREADING_ALT=1)
+
 if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
     include(FetchContent)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -50,12 +74,30 @@ if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
 endif()
 
 add_library(airplay_core STATIC
-    shared/server.c
-    shared/rtsp.c shared/rtp.c shared/mdns.c shared/sdp.c
-    shared/network_util.c shared/ntp_sync.c shared/log.c
-    shared/audio_pipeline.c shared/playout.c shared/alac_decoder.c shared/aac_decoder.c shared/alac.c shared/crypto.c
-    shared/airplay/airplay_auth.c shared/airplay/airplay_rtsp.c
-    shared/airplay/airplay_discovery.c)
+    shared/service/server.c
+    shared/airplay/airplay_auth.c
+    shared/airplay/airplay_discovery.c
+    shared/airplay/airplay_rtsp.c
+    shared/airplay/airplay2.c
+    shared/airplay/fairplay.c
+    shared/airplay/pairing.c
+    shared/audio/audio_pipeline.c
+    shared/audio/buffered_audio.c
+    shared/audio/playout.c
+    shared/codec/aac_decoder.c
+    shared/codec/alac_decoder.c
+    shared/codec/alac.c
+    shared/crypto/crypto.c
+    shared/crypto/crypto_memory.c
+    shared/protocol/bplist.c
+    shared/protocol/mdns.c
+    shared/protocol/rtp.c
+    shared/protocol/rtsp.c
+    shared/protocol/sdp.c
+    shared/sync/ntp_sync.c
+    shared/sync/ptp_sync.c
+    shared/util/log.c
+    shared/util/network_util.c)
 target_include_directories(airplay_core PUBLIC . shared platform)
 target_link_libraries(airplay_core PUBLIC mbedcrypto)
 if(AIRPLAY_ENABLE_FDK_AAC AND NOT AIRPLAY_PLATFORM STREQUAL "embedded")
