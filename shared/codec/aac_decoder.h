@@ -4,8 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* AAC decoder adapter. Desktop builds wrap FDK-AAC while embedded builds may
- * provide the same contract with a board-selected decoder. */
+/* AAC decoder adapter backed by FDK-AAC. */
 
 /* Caller-owned decoder handle and negotiated output format. */
 typedef struct

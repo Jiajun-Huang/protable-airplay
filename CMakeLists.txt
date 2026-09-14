@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(airplay_speaker LANGUAGES C)
+project(airplay_speaker LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -13,8 +13,6 @@ endif()
 set(AIRPLAY_PLATFORM "${default_platform}" CACHE STRING "windows, apple, linux, or embedded")
 set_property(CACHE AIRPLAY_PLATFORM PROPERTY STRINGS windows apple linux embedded)
 set(AIRPLAY_PLATFORM_INCLUDE_DIRS "" CACHE STRING "Board, FreeRTOS, and lwIP include directories")
-set(AIRPLAY_MBEDTLS_SOURCE_DIR "" CACHE PATH "Existing mbedTLS 2.28 source directory")
-option(AIRPLAY_ENABLE_FDK_AAC "Build and link the FDK-AAC decoder dependency" ON)
 
 if(NOT AIRPLAY_PLATFORM MATCHES "^(windows|apple|linux|embedded)$")
     message(FATAL_ERROR "Unknown AIRPLAY_PLATFORM: ${AIRPLAY_PLATFORM}")

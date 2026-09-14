@@ -3,9 +3,7 @@
 #include <limits.h>
 #include <string.h>
 
-#if defined(AIRPLAY_ENABLE_FDK_AAC)
 #include <aacdecoder_lib.h>
-#endif
 
 int aac_decoder_init(aac_decoder_t *decoder,
                      const uint8_t *config,
@@ -20,7 +18,6 @@ int aac_decoder_init(aac_decoder_t *decoder,
     decoder->channels = channels;
     decoder->sample_rate = sample_rate;
 
-#if defined(AIRPLAY_ENABLE_FDK_AAC)
     HANDLE_AACDECODER handle = aacDecoder_Open(TT_MP4_RAW, 1);
     if (!handle)
         return -1;
@@ -36,11 +33,6 @@ int aac_decoder_init(aac_decoder_t *decoder,
     }
     decoder->impl = handle;
     return 0;
-#else
-    (void)config;
-    (void)config_len;
-    return -1;
-#endif
 }
 
 int aac_decoder_decode(aac_decoder_t *decoder,
@@ -55,7 +47,6 @@ int aac_decoder_decode(aac_decoder_t *decoder,
         return -1;
 
     *output_samples = 0;
-#if defined(AIRPLAY_ENABLE_FDK_AAC)
     HANDLE_AACDECODER handle = (HANDLE_AACDECODER)decoder->impl;
     UCHAR *buffers[1] = {(UCHAR *)input};
     UINT buffer_sizes[1] = {(UINT)input_len};
@@ -78,18 +69,13 @@ int aac_decoder_decode(aac_decoder_t *decoder,
         return -1;
     }
     return 0;
-#else
-    return -1;
-#endif
 }
 
 void aac_decoder_close(aac_decoder_t *decoder)
 {
     if (!decoder)
         return;
-#if defined(AIRPLAY_ENABLE_FDK_AAC)
     if (decoder->impl)
         aacDecoder_Close((HANDLE_AACDECODER)decoder->impl);
-#endif
     memset(decoder, 0, sizeof(*decoder));
 }

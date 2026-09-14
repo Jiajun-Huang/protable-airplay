@@ -46,7 +46,7 @@ Edit [airplay_config.h](airplay_config.h) to configure the speaker name, ports, 
 
 ## Build
 
-Use a C11 compiler and CMake 3.20 or newer. Run the commands below from this directory. Desktop builds fetch mbedTLS 2.28.8 automatically; use `-DAIRPLAY_MBEDTLS_SOURCE_DIR=/path/to/mbedtls` to build from an existing source tree.
+Use C11 and C++ compilers and CMake 3.20 or newer. Run the commands below from this directory. All platforms use CPM.cmake to fetch and build mbedTLS 2.28.8 and FDK-AAC 2.0.3 automatically. To use existing source trees, set `-DCPM_mbedtls_SOURCE=/path/to/mbedtls` and `-DCPM_fdk_aac_SOURCE=/path/to/fdk-aac`.
 
 ### Windows
 
@@ -91,7 +91,7 @@ Replace the example IP and MAC with the selected interface's values. The MAC is 
 
 ### Embedded (FreeRTOS and lwIP)
 
-Build this project as part of the board firmware using its cross-compilation toolchain. Provide FreeRTOS, lwIP, a board-configured `mbedcrypto` target, and the SDK include directories before adding this project:
+Build this project as part of the board firmware using its C/C++ cross-compilation toolchain. Provide FreeRTOS, lwIP, and the SDK include directories before adding this project:
 
 ```cmake
 set(AIRPLAY_PLATFORM embedded CACHE STRING "" FORCE)
@@ -102,13 +102,13 @@ add_subdirectory(path/to/airplay)
 target_link_libraries(firmware PRIVATE airplay_embedded)
 ```
 
-Here, `firmware` is the board's executable target and the include variables refer to its SDK directories. The `mbedcrypto` target must be built from source so this project can enable the fixed-buffer allocator and its thread-safe adapter. As an alternative to supplying that target, set `AIRPLAY_MBEDTLS_SOURCE_DIR` to an mbedTLS 2.28 source tree configured for the board. Build the firmware with its normal CMake toolchain and build commands.
+Here, `firmware` is the board's executable target and the include variables refer to its SDK directories. CMake builds mbedTLS and FDK-AAC with the firmware's toolchain. Build the firmware with its normal CMake toolchain and build commands.
 
-Shared code does not call `malloc`, `calloc`, `realloc`, or `free`. mbedTLS allocations use a statically reserved buffer whose default size is 64 KiB; override `AIRPLAY_CRYPTO_MEMORY_SIZE` consistently if the board needs a different capacity. Platform libraries, lwIP, FreeRTOS, and an optional AAC backend retain their own allocation policies.
+Shared code does not call `malloc`, `calloc`, `realloc`, or `free`. mbedTLS allocations use a statically reserved buffer whose default size is 64 KiB; override `AIRPLAY_CRYPTO_MEMORY_SIZE` consistently if the board needs a different capacity. Platform libraries, lwIP, FreeRTOS, and FDK-AAC retain their own allocation policies.
 
 Implement the four audio functions declared in [board_audio.h](platform/embedded/board_audio.h), plus `airplay_board_time_us` from [runtime.h](platform/embedded/runtime.h). The clock must return Unix UTC microseconds. Audio writes must copy or consume interleaved 16-bit PCM before returning; queued DMA frames must be included in the output-delay estimate.
 
-FreeRTOS must enable dynamic allocation, mutexes, and event groups. Configure lwIP with `NO_SYS=0`, sockets/netconn, socket select, IPv4/TCP/UDP, IGMP, multicast transmit options, and address reuse. The adapter supports `LWIP_COMPAT_SOCKETS=0`. Provide `sys_now()`. Enable the RSA, AES, SHA-1, Base64, entropy, and random-number facilities used by mbedTLS.
+FreeRTOS must enable dynamic allocation, mutexes, and event groups. Configure lwIP with `NO_SYS=0`, sockets/netconn, socket select, IPv4/TCP/UDP, IGMP, multicast transmit options, and address reuse. The adapter supports `LWIP_COMPAT_SOCKETS=0`. Provide `sys_now()`. Enable the RSA, AES, SHA-1, Base64, entropy, and random-number facilities used by mbedTLS, and configure its entropy, timing, and networking support for the board. FDK-AAC requires C runtime heap allocation and standard I/O.
 
 After the scheduler, network interface, and clock are ready, call `airplay_platform_start(&config)` from one owner task. That task also calls `airplay_platform_stop()` and waits for cleanup. Use the board's IP and MAC, with `.device_name = AIRPLAY_DEVICE_NAME` for the configured name.
 
