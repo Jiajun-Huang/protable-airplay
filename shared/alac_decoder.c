@@ -1,4 +1,5 @@
 #include "alac_decoder.h"
+#include "log.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -19,19 +20,19 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     memset(decoder, 0, sizeof(*decoder));
 
-    decoder->frame_length = frames_per_packet ? frames_per_packet : 352;
-    if (decoder->frame_length > 8192)
-        decoder->frame_length = 352;
+    decoder->frame_length = frames_per_packet ? frames_per_packet : AIRPLAY_DEFAULT_FRAMES_PER_PACKET;
+    if (decoder->frame_length > ALAC_MAX_SAMPLES_PER_FRAME)
+        return -1;
 
-    decoder->bit_depth = bit_depth ? bit_depth : 16;
+    decoder->bit_depth = bit_depth ? bit_depth : AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
     if (decoder->bit_depth != 16 && decoder->bit_depth != 24)
-        decoder->bit_depth = 16;
+        decoder->bit_depth = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
-    decoder->channels = channels ? channels : 2;
+    decoder->channels = channels ? channels : AIRPLAY_DEFAULT_CHANNELS;
     if (decoder->channels == 0 || decoder->channels > 2)
-        decoder->channels = 2;
+        decoder->channels = AIRPLAY_DEFAULT_CHANNELS;
 
-    decoder->sample_rate = sample_rate ? sample_rate : 44100;
+    decoder->sample_rate = sample_rate ? sample_rate : AIRPLAY_DEFAULT_SAMPLE_RATE;
 
     if (fmtp && fmtp_count > 0)
     {
@@ -39,10 +40,10 @@ int alac_decoder_init(alac_decoder_t *decoder,
         for (size_t i = 0; i < decoder->fmtp_count; i++)
             decoder->fmtp[i] = fmtp[i];
 
-        printf("[alac] fmtp_count=%zu values:", decoder->fmtp_count);
+        LOG_DEBUG("alac", "fmtp_count=%zu values:", decoder->fmtp_count);
         for (size_t i = 0; i < decoder->fmtp_count; i++)
-            printf(" %u", decoder->fmtp[i]);
-        printf("\n");
+            LOG_DEBUG("alac", " %u", decoder->fmtp[i]);
+        LOG_DEBUG("alac", "\n");
     }
 
     alac_file *alac = alac_create(decoder->bit_depth, decoder->channels);
@@ -67,20 +68,20 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     decoder->impl = (void *)alac;
 
-    printf("[alac] Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
-           decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
-    printf("[alac] setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
-           alac->setinfo_max_samples_per_frame,
-           alac->setinfo_7a,
-           alac->setinfo_sample_size,
-           alac->setinfo_rice_historymult,
-           alac->setinfo_rice_initialhistory,
-           alac->setinfo_rice_kmodifier,
-           alac->setinfo_7f,
-           alac->setinfo_80,
-           alac->setinfo_82,
-           alac->setinfo_86,
-           alac->setinfo_8a_rate);
+    LOG_INFO("alac", "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
+             decoder->frame_length, decoder->bit_depth, decoder->channels, decoder->sample_rate);
+    LOG_DEBUG("alac", "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u maxFrameBytes=%u avgBitRate=%u rate=%u\n",
+              alac->setinfo_max_samples_per_frame,
+              alac->setinfo_7a,
+              alac->setinfo_sample_size,
+              alac->setinfo_rice_historymult,
+              alac->setinfo_rice_initialhistory,
+              alac->setinfo_rice_kmodifier,
+              alac->setinfo_7f,
+              alac->setinfo_80,
+              alac->setinfo_82,
+              alac->setinfo_86,
+              alac->setinfo_8a_rate);
 
     return 0;
 }
@@ -102,14 +103,15 @@ int alac_decoder_decode_frame(alac_decoder_t *decoder,
 
     int output_bytes = (int)max_output_bytes;
 
-    alac_decode_frame(alac, (unsigned char *)input, output, &output_bytes);
+    *output_samples = 0;
+    alac_decode_frame(alac, input, input_len, output, &output_bytes);
 
     if (output_bytes <= 0)
         return -1;
 
     size_t samples = (size_t)output_bytes / sizeof(int16_t);
-    if (samples > max_output_samples)
-        samples = max_output_samples;
+    if (samples > max_output_samples || samples % decoder->channels != 0)
+        return -1;
 
     *output_samples = samples;
     return 0;

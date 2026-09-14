@@ -1,36 +1,30 @@
-# cmake_minimum_required(VERSION 3.15)
-# project(airplay_speaker C)
+add_executable(test_core test_core.c)
+target_link_libraries(test_core PRIVATE airplay_core airplay_platform)
+add_test(NAME core_protocol COMMAND test_core)
 
-# set(CMAKE_C_STANDARD 11)
+add_executable(test_net test_net.c)
+target_link_libraries(test_net PRIVATE airplay_core airplay_platform)
+add_test(NAME network_contract COMMAND test_net)
+set_tests_properties(network_contract PROPERTIES TIMEOUT 15)
 
-# # shared core library
-# file(GLOB RAOP_SHARED_SOURCES CONFIGURE_DEPENDS
-#     "shared/*.c"
-# )
+add_executable(test_server test_server.c fake_platform.c)
+target_link_libraries(test_server PRIVATE airplay_core)
+add_test(NAME service_lifecycle COMMAND test_server)
+set_tests_properties(service_lifecycle PROPERTIES TIMEOUT 15)
 
+add_executable(test_rtsp test_rtsp.c)
+target_link_libraries(test_rtsp PRIVATE airplay_core)
+add_test(NAME rtsp_stream COMMAND test_rtsp)
+set_tests_properties(rtsp_stream PROPERTIES TIMEOUT 15)
 
-# # include directories
+add_executable(test_mdns test_mdns.c)
+target_link_libraries(test_mdns PRIVATE airplay_core)
+add_test(NAME mdns_wire COMMAND test_mdns)
 
-# add_library(raop_shared ${RAOP_SHARED_SOURCES})
+add_executable(test_alac test_alac.c)
+target_link_libraries(test_alac PRIVATE airplay_core)
+add_test(NAME alac_samples COMMAND test_alac)
 
-
-# target_include_directories(raop_shared PUBLIC include ${CMAKE_CURRENT_SOURCE_DIR}/shared)
-
-# # # unit tests (always build)
-# # add_executable(test_rtsp tests/test_rtsp.c)
-# # target_link_libraries(test_rtsp raop_shared)
-
-# # add_executable(test_sdp tests/test_sdp.c)
-# # target_link_libraries(test_sdp raop_shared)
-
-# # enable_testing()
-# # add_test(NAME rtsp_parser COMMAND test_rtsp)
-# # add_test(NAME sdp_parser COMMAND test_sdp)
-
-# # platform-specific targets
-# if(WIN32)
-#     add_subdirectory(platform/windows)
-# endif()
-
-# # embedded target stub (not buildable without lwIP)
-
+add_executable(test_timing test_timing.c)
+target_link_libraries(test_timing PRIVATE airplay_core)
+add_test(NAME scheduled_audio COMMAND test_timing)

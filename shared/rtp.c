@@ -1,25 +1,21 @@
 #include "rtp.h"
 
-#include <stdio.h>
 #include <string.h>
-
-static void rtp_log_payload_preview(const uint8_t *payload, size_t payload_len)
-{
-    size_t preview = payload_len < 32 ? payload_len : 32;
-    size_t i;
-
-    printf("[rtp] audio payload preview (%zu bytes): ", preview);
-    for (i = 0; i < preview; i++)
-        printf("%02X ", payload[i]);
-    printf("\n");
-}
-
 int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet)
 {
     size_t header_size;
 
     if (!data || !packet || len < 12)
         return -1;
+
+    /* RAOP retransmit response: a four-byte wrapper followed by a full RTP packet. */
+    if ((data[1] & 0x7f) == 0x56)
+    {
+        if (len < 16)
+            return -1;
+        data += 4;
+        len -= 4;
+    }
 
     memset(packet, 0, sizeof(*packet));
 
@@ -62,10 +58,13 @@ int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet)
     packet->payload = data + header_size;
     packet->payload_len = len - header_size;
 
-    if (packet->header.padding && packet->payload_len > 0)
+    if (packet->header.padding)
     {
-        uint8_t pad = packet->payload[packet->payload_len - 1];
-        if (pad > packet->payload_len)
+        uint8_t pad;
+        if (packet->payload_len == 0)
+            return -1;
+        pad = packet->payload[packet->payload_len - 1];
+        if (pad == 0 || pad > packet->payload_len)
             return -1;
         packet->payload_len -= pad;
     }
@@ -77,153 +76,84 @@ int rtp_receiver_create(rtp_receiver_t *receiver, const rtp_receiver_config_t *c
 {
     if (!receiver || !config)
         return -1;
-
     memset(receiver, 0, sizeof(*receiver));
+    receiver->audio_socket = (net_socket_t)NET_SOCKET_INIT;
+    receiver->control_socket = (net_socket_t)NET_SOCKET_INIT;
+    receiver->timing_socket = (net_socket_t)NET_SOCKET_INIT;
     receiver->config = *config;
-
-    printf("[rtp] Creating RTP receiver with ports: audio=%u, control=%u, timing=%u\n",
-           config->audio_port, config->control_port, config->timing_port);
-
-    if (config->audio_port > 0)
+    if ((config->audio_port && net_udp_bind(&receiver->audio_socket, config->audio_port) != 0) ||
+        (config->control_port && net_udp_bind(&receiver->control_socket, config->control_port) != 0) ||
+        (config->timing_port && net_udp_bind(&receiver->timing_socket, config->timing_port) != 0))
     {
-        if (udp_create(&receiver->audio_socket, config->audio_port) != 0)
-            goto fail;
-        receiver->audio_open = 1;
-        printf("[rtp] Audio socket created on port %u\n", udp_get_port(&receiver->audio_socket));
+        rtp_receiver_close(receiver);
+        return -1;
     }
-
-    if (config->control_port > 0)
-    {
-        if (udp_create(&receiver->control_socket, config->control_port) != 0)
-            goto fail;
-        receiver->control_open = 1;
-        printf("[rtp] Control socket created on port %u\n", udp_get_port(&receiver->control_socket));
-    }
-
-    if (config->timing_port > 0)
-    {
-        if (udp_create(&receiver->timing_socket, config->timing_port) != 0)
-            goto fail;
-        receiver->timing_open = 1;
-        printf("[rtp] Timing socket created on port %u\n", udp_get_port(&receiver->timing_socket));
-    }
-
     return 0;
-
-fail:
-    rtp_receiver_close(receiver);
-    return -1;
 }
 
 int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
 {
-    int activity = 0;
-
+    net_socket_t sockets[3];
+    uint8_t ready[3];
+    uint8_t *buffers[3];
+    size_t i;
+    int result;
     if (!receiver)
         return -1;
-
-    if (receiver->audio_open && udp_poll(&receiver->audio_socket, timeout_ms) > 0)
+    sockets[0] = receiver->audio_socket;
+    sockets[1] = receiver->control_socket;
+    sockets[2] = receiver->timing_socket;
+    buffers[0] = receiver->audio_buffer;
+    buffers[1] = receiver->control_buffer;
+    buffers[2] = receiver->timing_buffer;
+    result = net_wait(sockets, 3, ready, timeout_ms);
+    if (result <= 0)
+        return result < 0 ? -1 : 0;
+    /* Timing and sync anchors are processed before an audio burst. */
+    for (size_t order = 0; order < 3; ++order)
     {
-        // IMPORTANT: drain all queued UDP packets each poll cycle.
-        // Reading only one packet per cycle quickly causes kernel-buffer backlog and packet loss.
-        for (;;)
+        i = (size_t[]){2, 1, 0}[order];
+        unsigned batch;
+        if (!ready[i])
+            continue;
+        /* Bound each batch so control packets and shutdown get time to run. */
+        for (batch = 0; batch < 32; batch++)
         {
-            char src_ip[64] = {0};
-            uint16_t src_port = 0;
-            int len = udp_receive(&receiver->audio_socket,
-                                  receiver->audio_buffer,
-                                  sizeof(receiver->audio_buffer),
-                                  src_ip,
-                                  &src_port,
-                                  0);
-            if (len <= 0)
+            net_addr_t peer = {0};
+            int length = net_udp_recv(&sockets[i], buffers[i], RTP_BUFFER_SIZE, &peer, 0);
+            if (length == NET_TIMEOUT)
                 break;
-
-            rtp_packet_t packet;
-            activity = 1;
-            receiver->audio_packet_count++;
-
-            if (rtp_parse_packet(receiver->audio_buffer, (size_t)len, &packet) == 0)
+            if (length == NET_ERROR)
+                return -1;
+            if (length == 0)
+                continue;
+            if (receiver->peer_ip[0] && strcmp(peer.ip, receiver->peer_ip) != 0)
+                continue;
+            if (i == 0 || (i == 1 && length >= 2 && (buffers[i][1] & 0x7f) == 0x56))
             {
-                if (receiver->audio_packet_count <= 2 || (receiver->audio_packet_count % 2000) == 0)
-                {
-                    printf("[rtp] audio pkt #%u from %s:%u seq=%u ts=%u payload=%zu\n",
-                           receiver->audio_packet_count,
-                           src_ip,
-                           src_port,
-                           packet.header.sequence,
-                           packet.header.timestamp,
-                           packet.payload_len);
-                    if (packet.payload && packet.payload_len > 0)
-                        rtp_log_payload_preview(packet.payload, packet.payload_len);
-                }
-
-                if (receiver->config.audio_cb)
+                rtp_packet_t packet;
+                receiver->audio_packet_count++;
+                if (rtp_parse_packet(buffers[i], (size_t)length, &packet) == 0 && receiver->config.audio_cb)
                     receiver->config.audio_cb(&packet, receiver->config.user_data);
+            }
+            else if (i == 1 && receiver->config.control_cb)
+            {
+                receiver->config.control_cb(buffers[i], (size_t)length, receiver->config.user_data);
+            }
+            else if (i == 2 && receiver->config.timing_cb)
+            {
+                receiver->config.timing_cb(buffers[i], (size_t)length, &peer, receiver->config.user_data);
             }
         }
     }
-
-    if (receiver->control_open && udp_poll(&receiver->control_socket, 0) > 0)
-    {
-        // Keep control/timing sockets drained too, otherwise stale packets accumulate.
-        for (;;)
-        {
-            int len = udp_receive(&receiver->control_socket,
-                                  receiver->control_buffer,
-                                  sizeof(receiver->control_buffer),
-                                  NULL,
-                                  NULL,
-                                  0);
-            if (len <= 0)
-                break;
-
-            activity = 1;
-            if (receiver->config.control_cb)
-                receiver->config.control_cb(receiver->control_buffer, (size_t)len, receiver->config.user_data);
-        }
-    }
-
-    if (receiver->timing_open && udp_poll(&receiver->timing_socket, 0) > 0)
-    {
-        for (;;)
-        {
-            int len = udp_receive(&receiver->timing_socket,
-                                  receiver->timing_buffer,
-                                  sizeof(receiver->timing_buffer),
-                                  NULL,
-                                  NULL,
-                                  0);
-            if (len <= 0)
-                break;
-
-            activity = 1;
-            if (receiver->config.timing_cb)
-                receiver->config.timing_cb(receiver->timing_buffer, (size_t)len, receiver->config.user_data);
-        }
-    }
-
-    return activity ? 0 : -1;
+    return 0;
 }
 
 void rtp_receiver_close(rtp_receiver_t *receiver)
 {
     if (!receiver)
         return;
-
-    if (receiver->audio_open)
-    {
-        udp_close(&receiver->audio_socket);
-        receiver->audio_open = 0;
-    }
-    if (receiver->control_open)
-    {
-        udp_close(&receiver->control_socket);
-        receiver->control_open = 0;
-    }
-    if (receiver->timing_open)
-    {
-        udp_close(&receiver->timing_socket);
-        receiver->timing_open = 0;
-    }
+    net_close(&receiver->audio_socket);
+    net_close(&receiver->control_socket);
+    net_close(&receiver->timing_socket);
 }

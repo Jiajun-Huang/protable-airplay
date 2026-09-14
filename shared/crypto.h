@@ -23,7 +23,7 @@ typedef struct
 
 /**
  * @brief Decrypt RSA-encrypted AES key
- * Uses hardcoded AirPort Express private key for proof-of-concept
+ * Uses the AirPort Express RSA key required by this RAOP authentication scheme.
  *
  * @param encrypted_key RSA-encrypted AES key (base64 or binary)
  * @param encrypted_len length of encrypted data
@@ -53,5 +53,14 @@ int crypto_aes_init(crypto_aes_context_t *ctx, const uint8_t *aes_key, const uin
  * @return 0 on success, negative on error
  */
 int crypto_aes_decrypt(crypto_aes_context_t *ctx, const uint8_t *input, uint8_t *output, size_t len);
+
+/* Decrypt an AirPlay 2 RTP payload using ChaCha20-Poly1305.
+ * The payload layout is ciphertext || 16-byte tag || 8-byte nonce suffix.
+ * AAD is the RTP timestamp and SSRC at full_packet offsets 4..11. */
+int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
+                               const uint8_t *full_packet, size_t full_packet_len,
+                               size_t payload_offset, size_t payload_len,
+                               uint8_t *output, size_t output_capacity,
+                               size_t *output_len);
 
 #endif // CRYPTO_H

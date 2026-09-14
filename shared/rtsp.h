@@ -1,21 +1,13 @@
 #ifndef RTSP_SERVER_H
 #define RTSP_SERVER_H
 
-#include <stdint.h>
 #include <stddef.h>
-#include <time.h>
-#include "tcp_if.h"
+#include <stdint.h>
+#include "airplay_config.h"
+#include "net.h"
+#include "os.h"
+#include "sdp.h"
 
-#define RTSP_MAX_SESSIONS 32
-#define RTSP_SESSION_ID_LEN 16
-#define RTSP_RX_BUFFER_SIZE (256 * 1024)
-
-typedef struct rtsp_session rtsp_session_t;
-typedef struct rtsp_instance rtsp_instance_t;
-
-/**
- * @brief RTSP method types
- */
 typedef enum
 {
     RTSP_METHOD_UNKNOWN = 0,
@@ -32,12 +24,8 @@ typedef enum
     RTSP_METHOD_PAUSE,
     RTSP_METHOD_TEARDOWN,
     RTSP_METHOD_GET_PARAMETER,
-    RTSP_METHOD_SET_PARAMETER,
+    RTSP_METHOD_SET_PARAMETER
 } rtsp_method_t;
-
-/**
- * @brief RTSP request structure
- */
 
 typedef struct
 {
@@ -48,63 +36,59 @@ typedef struct
 typedef struct
 {
     rtsp_method_t method;
-    char uri[256];             // Request URI
-    char version[32];          // RTSP version string (e.g., "RTSP/1.0")
-    uint32_t cseq;             // CSeq header value
-    rtsp_header_t headers[32]; // max 32 headers per request
-    size_t header_count;       // actual number of headers parsed
-    uint8_t *body;             // pointer into receive buffer
-    size_t body_len;           // length of body in bytes
+    char uri[256];
+    char version[32];
+    uint32_t cseq;
+    rtsp_header_t headers[32];
+    size_t header_count;
+    uint8_t *body;
+    size_t body_len;
 } rtsp_request_t;
 
 typedef struct
 {
-    uint32_t cseq;                        // CSeq to match request
-    char session_id[RTSP_SESSION_ID_LEN]; // Session ID if applicable
-    char *headers;                        // Additional headers as raw string (for simplicity)
-    uint8_t *body;                        // Response body (if any)
-    size_t body_len;                      // Length of response body
-} rtsp_response_t;
-struct rtsp_session
-{
-    tcp_client_t *client;
-    char session_id[RTSP_SESSION_ID_LEN];
-    uint32_t last_cseq;
-    time_t created_at;
-    void *user_data;
-};
+    net_socket_t socket;
+    net_addr_t peer;
+} rtsp_client_t;
 
-struct rtsp_instance
+typedef struct
 {
-    tcp_socket_t tcp_server;
-    void *user_data;
-    uint32_t session_id_counter;
-    rtsp_session_t *sessions[RTSP_MAX_SESSIONS];
-    int session_count;
-    size_t rx_lengths[TCP_MAX_CLIENTS];
-    uint8_t rx_buffers[TCP_MAX_CLIENTS][RTSP_RX_BUFFER_SIZE];
-};
+    sdp_session_t session;
+    int has_session;
+    int recording;
+    float volume_db;
+    unsigned generation;
+    unsigned flush_generation;
+    net_addr_t timing_peer;
+    uint32_t timestamp_floor;
+    int has_timestamp_floor, floor_exclusive;
+} rtsp_stream_state_t;
 
+typedef struct rtsp_instance
+{
+    net_socket_t listener;
+    rtsp_client_t clients[RTSP_MAX_CLIENTS];
+    size_t rx_lengths[RTSP_MAX_CLIENTS];
+    uint8_t rx_buffers[RTSP_MAX_CLIENTS][RTSP_RX_BUFFER_SIZE];
+    rtsp_request_t request;
+    rtsp_stream_state_t stream;
+    os_mutex_t state_lock;
+    rtsp_client_t *stream_owner;
+    char local_ip[16];
+    char local_mac_hex[13];
+} rtsp_instance_t;
+
+/* The caller owns the instance and the thread calling poll. Create before
+ * starting threads; close after polling and all state readers have stopped. */
 int rtsp_server_create(rtsp_instance_t *instance, uint16_t port);
+int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms);
+void rtsp_server_close(rtsp_instance_t *instance);
+int rtsp_set_identity(rtsp_instance_t *instance, const char *local_ip,
+                      const char *local_mac_hex);
+void rtsp_get_stream_state(rtsp_instance_t *instance, rtsp_stream_state_t *out);
 
-int rtsp_server_start(rtsp_instance_t *instance);
-
-/**
- * @brief Send RTSP response to client
- * @param client Client to send to
- * @param status HTTP status code (e.g., 200)
- * @param status_text Status text (e.g., "OK")
- * @param cseq CSeq value from request
- * @param extra_headers Additional headers as null-terminated string (can be NULL)
- * @param body Response body (can be NULL)
- * @param body_len Length of body in bytes
- * @return 0 on success, -1 on error
- */
-int rtsp_send_response(tcp_client_t *client, int status, const char *status_text,
+int rtsp_send_response(rtsp_client_t *client, int status, const char *status_text,
                        uint32_t cseq, const char *extra_headers,
                        const uint8_t *body, size_t body_len);
 
-/* Basic stream state exposed for other modules (e.g. RTP thread). */
-int rtsp_is_recording(void);
-
-#endif // RTSP_SERVER_H
+#endif

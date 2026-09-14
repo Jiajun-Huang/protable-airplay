@@ -31,21 +31,25 @@
 #define __ALAC__DECOMP_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-#define ALAC_MAX_SAMPLES_PER_FRAME 8192
-#define ALAC_MAX_CONTEXTS 4
+#include "airplay_config.h"
 
 typedef struct alac_file alac_file;
 
 alac_file *alac_create(int samplesize, int numchannels);
-void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer, int *outputsize);
+void alac_decode_frame(alac_file *alac, const unsigned char *inbuffer, size_t inputsize,
+                       void *outbuffer, int *outputsize);
 void alac_set_info(alac_file *alac, char *inputbuffer);
 void alac_allocate_buffers(alac_file *alac);
 void alac_free(alac_file *alac);
 
 struct alac_file
 {
-  unsigned char *input_buffer;
+  const unsigned char *input_buffer;
+  const unsigned char *input_start;
+  const unsigned char *input_end;
+  int decode_error;
   int input_buffer_bitaccumulator; /* used so we can do arbitrary
                                       bit reads */
 

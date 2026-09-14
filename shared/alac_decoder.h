@@ -10,9 +10,6 @@
  * User manages memory - decoder instance and buffers are provided by caller.
  */
 
-// Maximum frame size for ALAC (typical 352 samples per frame, stereo = 704)
-#define ALAC_MAX_FRAME_SIZE 352
-
 typedef struct
 {
     // Configuration from session/fmtp
@@ -26,11 +23,6 @@ typedef struct
 
     void *impl; // alac_file*
 
-    // Working buffers (stereo)
-    int32_t predict_error_ch0[ALAC_MAX_FRAME_SIZE * 2];
-    int32_t predict_error_ch1[ALAC_MAX_FRAME_SIZE * 2];
-    int32_t output_samples_ch0[ALAC_MAX_FRAME_SIZE * 2];
-    int32_t output_samples_ch1[ALAC_MAX_FRAME_SIZE * 2];
 } alac_decoder_t;
 
 /**
@@ -38,8 +30,12 @@ typedef struct
  * User provides the decoder instance; this function initializes it.
  *
  * @param decoder pointer to user-allocated decoder
- * @param magic_cookie ALAC configuration data from SDP fmtp
- * @param cookie_len length of magic cookie
+ * @param fmtp ALAC parameters parsed from SDP
+ * @param fmtp_count number of fmtp parameters
+ * @param frames_per_packet negotiated PCM frame count
+ * @param bit_depth negotiated bits per sample
+ * @param channels negotiated channel count
+ * @param sample_rate negotiated sample rate in Hz
  * @return 0 on success, -1 on error
  */
 int alac_decoder_init(alac_decoder_t *decoder,

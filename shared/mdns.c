@@ -1,498 +1,267 @@
 #include "mdns.h"
-#include "../shared/network_util.h"
+#include "network_util.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static inline uint16_t htons_portable(uint16_t hostshort)
+#define DNS_HEADER_SIZE 12
+#define DNS_RR_SIZE 10
+
+static void write_u16(uint8_t *data, uint16_t value)
 {
-    return ((hostshort & 0xFF) << 8) | ((hostshort >> 8) & 0xFF);
+    data[0] = (uint8_t)(value >> 8);
+    data[1] = (uint8_t)value;
 }
 
-static inline uint32_t htonl_portable(uint32_t hostlong)
+static void write_u32(uint8_t *data, uint32_t value)
 {
-    return ((hostlong & 0xFF) << 24) |
-           (((hostlong >> 8) & 0xFF) << 16) |
-           (((hostlong >> 16) & 0xFF) << 8) |
-           ((hostlong >> 24) & 0xFF);
+    data[0] = (uint8_t)(value >> 24);
+    data[1] = (uint8_t)(value >> 16);
+    data[2] = (uint8_t)(value >> 8);
+    data[3] = (uint8_t)value;
 }
 
-static size_t mdns_encode_name(const char *name, uint8_t *buffer, size_t buffer_size)
+static uint16_t read_u16(const uint8_t *data)
 {
-    if (!name || !buffer || buffer_size == 0)
+    return (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
+}
+
+static int write_name(const char *name, uint8_t *buffer, size_t capacity, size_t *position)
+{
+    size_t start = *position;
+    if (!name || !name[0])
         return 0;
-
-    size_t pos = 0;
-    const char *start = name;
-
-    while (*name && pos < buffer_size - 1)
+    while (*name)
     {
+        const char *end = strchr(name, '.');
+        size_t length = end ? (size_t)(end - name) : strlen(name);
+        if (length == 0 || length > 63 || *position + 1 + length >= capacity)
+            return 0;
+        buffer[(*position)++] = (uint8_t)length;
+        memcpy(buffer + *position, name, length);
+        *position += length;
+        name += length;
         if (*name == '.')
-        {
-            size_t label_len = (size_t)(name - start);
-            if (label_len == 0 || label_len > 63)
-                return 0;
-            if (pos + label_len + 1 >= buffer_size)
-                return 0;
-
-            buffer[pos++] = (uint8_t)label_len;
-            memcpy(&buffer[pos], start, label_len);
-            pos += label_len;
-            start = name + 1;
-        }
-        name++;
+            name++;
     }
-
-    size_t label_len = (size_t)(name - start);
-    if (label_len > 63)
+    if (*position >= capacity || *position - start + 1 > 255)
         return 0;
-    if (pos + label_len + 2 >= buffer_size)
-        return 0;
-
-    buffer[pos++] = (uint8_t)label_len;
-    memcpy(&buffer[pos], start, label_len);
-    pos += label_len;
-    buffer[pos++] = 0;
-
-    return pos;
-}
-
-static int mdns_write_encoded_name(const char *name, uint8_t *buffer, size_t buffer_size, size_t *pos)
-{
-    size_t n;
-
-    if (!name || !buffer || !pos || *pos >= buffer_size)
-        return 0;
-
-    n = mdns_encode_name(name, &buffer[*pos], buffer_size - *pos);
-    if (n == 0)
-        return 0;
-
-    *pos += n;
+    buffer[(*position)++] = 0;
     return 1;
 }
 
-static dns_rr_t *mdns_begin_rr(uint8_t *buffer, size_t buffer_size, size_t *pos,
-                               uint16_t type, uint16_t rr_class, uint32_t ttl)
+static uint8_t *begin_record(uint8_t *buffer, size_t capacity, size_t *position,
+                             uint16_t type, uint16_t record_class, uint32_t ttl)
 {
-    dns_rr_t *rr;
-
-    if (!buffer || !pos || *pos + sizeof(dns_rr_t) > buffer_size)
+    uint8_t *record;
+    if (*position + DNS_RR_SIZE > capacity)
         return NULL;
-
-    rr = (dns_rr_t *)&buffer[*pos];
-    rr->type = htons_portable(type);
-    rr->class = htons_portable(rr_class);
-    rr->ttl = htonl_portable(ttl);
-    rr->rdlength = 0;
-    *pos += sizeof(dns_rr_t);
-    return rr;
+    record = buffer + *position;
+    write_u16(record, type);
+    write_u16(record + 2, record_class);
+    write_u32(record + 4, ttl);
+    write_u16(record + 8, 0);
+    *position += DNS_RR_SIZE;
+    return record;
 }
 
-static int mdns_add_ptr_record(const mdns_config_t *cfg, const char *full_service_name,
-                               uint8_t *buffer, size_t buffer_size, size_t *pos, uint32_t ttl)
+static size_t build_packet(const mdns_instance_t *instance, uint8_t *buffer,
+                           size_t capacity, uint32_t ttl)
 {
-    dns_rr_t *rr;
-    size_t rdata_start;
-
-    if (!mdns_write_encoded_name(cfg->service_type, buffer, buffer_size, pos))
-        return 0;
-
-    rr = mdns_begin_rr(buffer, buffer_size, pos, 12, 0x0001, ttl);
-    if (!rr)
-        return 0;
-
-    rdata_start = *pos;
-    if (!mdns_write_encoded_name(full_service_name, buffer, buffer_size, pos))
-        return 0;
-
-    rr->rdlength = htons_portable((uint16_t)(*pos - rdata_start));
-    return 1;
-}
-
-static int mdns_add_srv_record(const mdns_config_t *cfg, const char *full_service_name,
-                               uint8_t *buffer, size_t buffer_size, size_t *pos, uint32_t ttl)
-{
-    dns_rr_t *rr;
-    dns_srv_rdata_t *srv;
-    size_t rdata_start;
-
-    if (!mdns_write_encoded_name(full_service_name, buffer, buffer_size, pos))
-        return 0;
-
-    rr = mdns_begin_rr(buffer, buffer_size, pos, 33, 0x8001, ttl);
-    if (!rr)
-        return 0;
-
-    if (*pos + sizeof(dns_srv_rdata_t) > buffer_size)
-        return 0;
-
-    rdata_start = *pos;
-    srv = (dns_srv_rdata_t *)&buffer[*pos];
-    srv->priority = htons_portable(0);
-    srv->weight = htons_portable(0);
-    srv->port = htons_portable(cfg->port);
-    *pos += sizeof(dns_srv_rdata_t);
-
-    if (!mdns_write_encoded_name(cfg->hostname, buffer, buffer_size, pos))
-        return 0;
-
-    rr->rdlength = htons_portable((uint16_t)(*pos - rdata_start));
-    return 1;
-}
-
-static int mdns_add_a_record(const mdns_config_t *cfg, uint8_t *buffer, size_t buffer_size, size_t *pos, uint32_t ttl)
-{
-    dns_rr_t *rr;
-    dns_a_rdata_t *a;
-    uint32_t ipv4_nbo;
-
-    if (!cfg->ipv4 || strlen(cfg->ipv4) == 0)
-        return 1;
-
-    // Convert string IP to network byte order
-    if (net_str_to_ipv4(cfg->ipv4, &ipv4_nbo) != 0)
-        return 0;
-
-    if (!mdns_write_encoded_name(cfg->hostname, buffer, buffer_size, pos))
-        return 0;
-
-    rr = mdns_begin_rr(buffer, buffer_size, pos, 1, 0x8001, ttl);
-    if (!rr)
-        return 0;
-
-    if (*pos + sizeof(dns_a_rdata_t) > buffer_size)
-        return 0;
-
-    a = (dns_a_rdata_t *)&buffer[*pos];
-    a->addr = ipv4_nbo;
-    *pos += sizeof(dns_a_rdata_t);
-    rr->rdlength = htons_portable(sizeof(dns_a_rdata_t));
-    return 1;
-}
-
-static int mdns_add_txt_record(const mdns_config_t *cfg, const char *full_service_name,
-                               uint8_t *buffer, size_t buffer_size, size_t *pos, uint32_t ttl)
-{
-    dns_rr_t *rr;
-    size_t rdata_start;
+    const mdns_config_t *config = &instance->config;
+    char full_name[256];
+    size_t position = DNS_HEADER_SIZE, start;
+    uint8_t *record;
+    uint16_t answers = 2;
     uint16_t i;
-
-    if (!cfg->txt_entries || cfg->txt_count == 0)
-        return 1;
-
-    if (!mdns_write_encoded_name(full_service_name, buffer, buffer_size, pos))
+    int name_length;
+    if (capacity < DNS_HEADER_SIZE)
+        return 0;
+    memset(buffer, 0, DNS_HEADER_SIZE);
+    write_u16(buffer + 2, 0x8400);
+    name_length = snprintf(full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
+    if (name_length < 0 || (size_t)name_length >= sizeof(full_name))
         return 0;
 
-    rr = mdns_begin_rr(buffer, buffer_size, pos, 16, 0x8001, ttl);
-    if (!rr)
+    if (!write_name(config->service_type, buffer, capacity, &position) ||
+        !(record = begin_record(buffer, capacity, &position, 12, 1, ttl)))
         return 0;
+    start = position;
+    if (!write_name(full_name, buffer, capacity, &position))
+        return 0;
+    write_u16(record + 8, (uint16_t)(position - start));
 
-    rdata_start = *pos;
-    for (i = 0; i < cfg->txt_count; i++)
+    if (!write_name(full_name, buffer, capacity, &position) ||
+        !(record = begin_record(buffer, capacity, &position, 33, 0x8001, ttl)) ||
+        position + 6 > capacity)
+        return 0;
+    start = position;
+    write_u16(buffer + position, 0);
+    write_u16(buffer + position + 2, 0);
+    write_u16(buffer + position + 4, config->port);
+    position += 6;
+    if (!write_name(config->hostname, buffer, capacity, &position))
+        return 0;
+    write_u16(record + 8, (uint16_t)(position - start));
+
+    if (config->ipv4 && config->ipv4[0])
     {
-        size_t n = strlen(cfg->txt_entries[i]);
-        if (n > 255)
-            n = 255;
-
-        if (*pos + 1 + n > buffer_size)
+        uint32_t address;
+        if (net_str_to_ipv4(config->ipv4, &address) != 0 ||
+            !write_name(config->hostname, buffer, capacity, &position) ||
+            !(record = begin_record(buffer, capacity, &position, 1, 0x8001, ttl)) ||
+            position + 4 > capacity)
             return 0;
-
-        buffer[(*pos)++] = (uint8_t)n;
-        memcpy(&buffer[*pos], cfg->txt_entries[i], n);
-        *pos += n;
-    }
-
-    rr->rdlength = htons_portable((uint16_t)(*pos - rdata_start));
-    return 1;
-}
-
-static size_t mdns_build_packet(const mdns_instance_t *instance, uint8_t *buffer, size_t buffer_size, uint32_t ttl)
-{
-    dns_header_t *hdr;
-    const mdns_config_t *cfg;
-    char full_service_name[256];
-    size_t pos = 0;
-    uint16_t answers = 0;
-
-    if (!instance || !buffer || buffer_size < sizeof(dns_header_t))
-        return 0;
-
-    cfg = &instance->config;
-
-    hdr = (dns_header_t *)&buffer[pos];
-    memset(hdr, 0, sizeof(*hdr));
-    hdr->flags = htons_portable(0x8400);
-    pos += sizeof(*hdr);
-
-    snprintf(full_service_name, sizeof(full_service_name), "%s.%s", cfg->instance_name, cfg->service_type);
-
-    if (!mdns_add_ptr_record(cfg, full_service_name, buffer, buffer_size, &pos, ttl))
-        return 0;
-    answers++;
-
-    if (!mdns_add_srv_record(cfg, full_service_name, buffer, buffer_size, &pos, ttl))
-        return 0;
-    answers++;
-
-    if (cfg->ipv4 != 0)
-    {
-        if (!mdns_add_a_record(cfg, buffer, buffer_size, &pos, ttl))
-            return 0;
+        memcpy(buffer + position, &address, 4);
+        position += 4;
+        write_u16(record + 8, 4);
         answers++;
     }
-
-    if (cfg->txt_entries && cfg->txt_count > 0)
+    if (config->txt_count)
     {
-        if (!mdns_add_txt_record(cfg, full_service_name, buffer, buffer_size, &pos, ttl))
+        if (!write_name(full_name, buffer, capacity, &position) ||
+            !(record = begin_record(buffer, capacity, &position, 16, 0x8001, ttl)))
             return 0;
-        answers++;
-    }
-
-    hdr->ancount = htons_portable(answers);
-    return pos;
-}
-
-static size_t mdns_decode_name(const uint8_t *buffer, size_t buffer_size, size_t offset,
-                               char *name, size_t name_size)
-{
-    size_t pos = offset;
-    size_t out = 0;
-
-    if (!buffer || !name || name_size == 0 || offset >= buffer_size)
-        return 0;
-
-    while (pos < buffer_size)
-    {
-        uint8_t len = buffer[pos++];
-        if (len == 0)
-            break;
-
-        if ((len & 0xC0) == 0xC0)
+        start = position;
+        for (i = 0; i < config->txt_count; i++)
         {
-            if (pos >= buffer_size)
+            size_t length;
+            if (!config->txt_entries[i])
                 return 0;
-            pos++;
-            break;
+            length = strlen(config->txt_entries[i]);
+            if (length > 255 || position + 1 + length > capacity)
+                return 0;
+            buffer[position++] = (uint8_t)length;
+            memcpy(buffer + position, config->txt_entries[i], length);
+            position += length;
         }
-
-        if (pos + len > buffer_size)
-            return 0;
-        if (out + len + 1 >= name_size)
-            return 0;
-
-        memcpy(&name[out], &buffer[pos], len);
-        out += len;
-        name[out++] = '.';
-        pos += len;
+        write_u16(record + 8, (uint16_t)(position - start));
+        answers++;
     }
-
-    if (out == 0)
-        name[0] = '\0';
-    else
-        name[out - 1] = '\0';
-
-    return pos;
+    write_u16(buffer + 6, answers);
+    return position;
 }
 
-static int mdns_name_matches(const mdns_config_t *cfg, const char *qname)
+static size_t decode_name(const uint8_t *data, size_t length, size_t offset,
+                          char *name, size_t capacity)
 {
-    char full_service_name[256];
-
-    if (!cfg || !qname)
-        return 0;
-
-    snprintf(full_service_name, sizeof(full_service_name), "%s.%s", cfg->instance_name, cfg->service_type);
-
-#ifdef _WIN32
-#define mdns_strcasecmp _stricmp
-#else
-#define mdns_strcasecmp strcasecmp
-#endif
-
-    if (mdns_strcasecmp(qname, cfg->service_type) == 0)
-        return 1;
-    if (mdns_strcasecmp(qname, full_service_name) == 0)
-        return 1;
-    if (mdns_strcasecmp(qname, cfg->hostname) == 0)
-        return 1;
-
+    size_t position = offset, next = 0, used = 0, steps;
+    for (steps = 0; steps < length; steps++)
+    {
+        uint8_t label_length;
+        if (position >= length)
+            return 0;
+        label_length = data[position++];
+        if (label_length == 0)
+        {
+            if (used == 0)
+                name[0] = '\0';
+            else
+                name[used - 1] = '\0';
+            return next ? next : position;
+        }
+        if ((label_length & 0xc0) == 0xc0)
+        {
+            size_t target;
+            if (position >= length)
+                return 0;
+            target = ((size_t)(label_length & 0x3f) << 8) | data[position++];
+            if (!next)
+                next = position;
+            position = target;
+            continue;
+        }
+        if ((label_length & 0xc0) || position + label_length > length ||
+            used + label_length + 1 >= capacity)
+            return 0;
+        memcpy(name + used, data + position, label_length);
+        used += label_length;
+        name[used++] = '.';
+        position += label_length;
+    }
     return 0;
 }
 
-static int mdns_qtype_supported(uint16_t qtype)
+static int name_matches(const mdns_config_t *config, const char *name)
 {
-    return (qtype == 1 ||  // A
-            qtype == 12 || // PTR
-            qtype == 16 || // TXT
-            qtype == 33 || // SRV
-            qtype == 255); // ANY
+    char full_name[256];
+    int length = snprintf(full_name, sizeof(full_name), "%s.%s", config->instance_name, config->service_type);
+    if (length < 0 || (size_t)length >= sizeof(full_name))
+        return 0;
+    return net_ascii_casecmp(name, config->service_type) == 0 ||
+           net_ascii_casecmp(name, full_name) == 0 ||
+           net_ascii_casecmp(name, config->hostname) == 0;
 }
 
-static mdns_error_t mdns_send_response(mdns_instance_t *instance, const char *dest_ip, uint16_t dest_port, uint32_t ttl)
+static mdns_error_t send_response(mdns_instance_t *instance, const net_addr_t *destination, uint32_t ttl)
 {
     uint8_t packet[1500];
-    size_t n;
+    size_t length;
     int sent;
-
-    if (!instance || !instance->udp_socket || !dest_ip || dest_port == 0)
+    if (!instance || !instance->socket || !destination)
         return MDNS_ERR_INVALID_ARGS;
-
-    n = mdns_build_packet(instance, packet, sizeof(packet), ttl);
-    if (n == 0)
-    {
-        printf("[mdns] Packet build failed (buffer overflow or invalid)\n");
+    length = build_packet(instance, packet, sizeof(packet), ttl);
+    if (!length)
         return MDNS_ERR_BUFFER_OVERFLOW;
-    }
-
-    printf("[mdns] Sending %zu bytes to %s:%u (instance: %s, service: %s)\n",
-           n, dest_ip, dest_port, instance->config.instance_name, instance->config.service_type);
-    fflush(stdout);
-
-    sent = udp_send(instance->udp_socket, packet, n, dest_ip, dest_port);
-    if (sent < 0)
-    {
-        printf("[mdns] ERROR: udp_send failed (returned %d)\n", sent);
-        return MDNS_ERR_SOCKET_ERROR;
-    }
-
-    printf("[mdns] Successfully sent %d bytes\n", sent);
-    fflush(stdout);
-    return MDNS_OK;
+    sent = net_udp_send(instance->socket, packet, length, destination);
+    return sent == (int)length ? MDNS_OK : MDNS_ERR_SOCKET_ERROR;
 }
 
-mdns_error_t mdns_create(mdns_instance_t *instance, const mdns_config_t *config, udp_socket_t *udp_socket)
+mdns_error_t mdns_create(mdns_instance_t *instance, const mdns_config_t *config, net_socket_t *socket)
 {
-    if (!instance || !config || !udp_socket)
+    if (!instance || !config || !socket || !config->service_type ||
+        !config->instance_name || !config->hostname || (config->txt_count && !config->txt_entries))
         return MDNS_ERR_INVALID_ARGS;
-
-    memset(instance, 0, sizeof(*instance));
     instance->config = *config;
-    instance->udp_socket = udp_socket;
+    instance->socket = socket;
     return MDNS_OK;
 }
 
 mdns_error_t mdns_announce(mdns_instance_t *instance)
 {
-    return mdns_send_response(instance, MDNS_MCAST_ADDR, MDNS_PORT, 60);
+    const net_addr_t destination = {MDNS_MCAST_ADDR, MDNS_PORT};
+    return send_response(instance, &destination, 60);
 }
 
 mdns_error_t mdns_goodbye(mdns_instance_t *instance)
 {
-    return mdns_send_response(instance, MDNS_MCAST_ADDR, MDNS_PORT, 0);
+    const net_addr_t destination = {MDNS_MCAST_ADDR, MDNS_PORT};
+    return send_response(instance, &destination, 0);
 }
 
-static mdns_error_t mdns_handle_packet_internal(mdns_instance_t *instance, const uint8_t *data, size_t len,
-                                                const char *src_ip, uint16_t src_port)
+mdns_error_t mdns_handle_packet_from(mdns_instance_t *instance, const uint8_t *data,
+                                     size_t length, const net_addr_t *source)
 {
-    uint16_t flags;
-    uint16_t qdcount;
-    size_t pos;
-    uint16_t i;
-
-    if (!instance || !data || len < sizeof(dns_header_t))
+    uint16_t questions, i;
+    size_t position = DNS_HEADER_SIZE;
+    if (!instance || !data || length < DNS_HEADER_SIZE)
         return MDNS_ERR_INVALID_ARGS;
-
-    flags = (uint16_t)((data[2] << 8) | data[3]);
-    if ((flags & 0x8000) != 0)
-    {
+    if (read_u16(data + 2) & 0x8000)
         return MDNS_OK;
-    }
-
-    qdcount = (uint16_t)((data[4] << 8) | data[5]);
-    pos = sizeof(dns_header_t);
-
-    for (i = 0; i < qdcount; i++)
+    questions = read_u16(data + 4);
+    for (i = 0; i < questions; i++)
     {
-        char qname[256];
-        size_t next = mdns_decode_name(data, len, pos, qname, sizeof(qname));
-        uint16_t qtype;
-        uint16_t qclass_raw;
-        uint16_t qclass;
-        int qu_preferred;
-
-        if (next == 0 || next + 4 > len)
+        char name[256];
+        size_t next = decode_name(data, length, position, name, sizeof(name));
+        uint16_t type, raw_class, record_class;
+        if (!next || next + 4 > length)
             return MDNS_ERR_INVALID_DATA;
-
-        qtype = (uint16_t)((data[next] << 8) | data[next + 1]);
-        qclass_raw = (uint16_t)((data[next + 2] << 8) | data[next + 3]);
-        qclass = (uint16_t)(qclass_raw & 0x7FFF);
-        qu_preferred = (qclass_raw & 0x8000) ? 1 : 0;
-        pos = next + 4;
-
-        // Only respond for matching names, supported record types, and class IN/ANY.
-        if (!mdns_name_matches(&instance->config, qname))
+        type = read_u16(data + next);
+        raw_class = read_u16(data + next + 2);
+        record_class = (uint16_t)(raw_class & 0x7fff);
+        position = next + 4;
+        if (!name_matches(&instance->config, name) ||
+            !(type == 1 || type == 12 || type == 16 || type == 33 || type == 255) ||
+            !(record_class == 1 || record_class == 255))
             continue;
-        if (!mdns_qtype_supported(qtype))
-            continue;
-        if (!(qclass == 1 || qclass == 255))
-            continue;
-
-        if (qu_preferred && src_ip && src_ip[0] != '\0' && src_port != 0)
-            return mdns_send_response(instance, src_ip, src_port, 4500);
-
+        if ((raw_class & 0x8000) && source && source->ip[0] && source->port)
+            return send_response(instance, source, 4500);
         return mdns_announce(instance);
     }
-
     return MDNS_OK;
 }
 
-mdns_error_t mdns_handle_packet(mdns_instance_t *instance, const uint8_t *data, size_t len)
+mdns_error_t mdns_handle_packet(mdns_instance_t *instance, const uint8_t *data, size_t length)
 {
-    return mdns_handle_packet_internal(instance, data, len, NULL, 0);
-}
-
-void mdns_run(mdns_instance_t *instance, int (*stop_fn)(void))
-{
-    uint8_t buffer[1500];
-    char src_ip[64];
-    uint16_t src_port = 0;
-
-    if (!instance || !instance->udp_socket)
-    {
-        return;
-    }
-
-    // stop func is optional - if provided, it will be called periodically to check if we should exit the loop
-    while (!stop_fn || !stop_fn())
-    {
-        int len = udp_receive(instance->udp_socket, buffer, sizeof(buffer), src_ip, &src_port, 1000);
-        if (len > 0)
-        {
-            mdns_handle_packet_internal(instance, buffer, (size_t)len, src_ip, src_port);
-        }
-    }
-}
-
-void mdns_run_multiple(mdns_instance_t **instances, size_t count, int (*stop_fn)(void))
-{
-    uint8_t buffer[1500];
-    char src_ip[64];
-    uint16_t src_port = 0;
-    size_t i;
-
-    if (!instances || count == 0)
-    {
-        return;
-    }
-
-    // All instances share the same UDP socket; receive once per loop iteration
-    udp_socket_t *shared_socket = instances[0]->udp_socket;
-
-    while (!stop_fn || !stop_fn())
-    {
-        int len = udp_receive(shared_socket, buffer, sizeof(buffer), src_ip, &src_port, 100);
-        if (len > 0)
-        {
-            // Dispatch the same packet to all instances
-            for (i = 0; i < count; i++)
-            {
-                mdns_instance_t *instance = instances[i];
-                if (instance && instance->udp_socket)
-                {
-                    mdns_handle_packet_internal(instance, buffer, (size_t)len, src_ip, src_port);
-                }
-            }
-        }
-    }
+    return mdns_handle_packet_from(instance, data, length, NULL);
 }

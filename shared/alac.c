@@ -31,13 +31,13 @@
 
 static const int host_bigendian = 0;
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
 
 #include "alac.h"
+#include "log.h"
 
 static alac_file g_alac_pool[ALAC_MAX_CONTEXTS];
 
@@ -69,8 +69,8 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
 
   if (outputsamples <= 0 || outputsamples > (int32_t)alac->setinfo_max_samples_per_frame)
   {
-    fprintf(stderr, "FIXME: Invalid output sample count %d (max %u) - %s.\n",
-            outputsamples, alac->setinfo_max_samples_per_frame, errtag);
+    LOG_ERROR("alac", "Invalid output sample count %d (max %u) - %s.\n",
+              outputsamples, alac->setinfo_max_samples_per_frame, errtag);
     *outputsize = 0;
     return -1;
   }
@@ -78,7 +78,7 @@ static int set_output_size_checked(alac_file *alac, int32_t outputsamples,
   int64_t required = (int64_t)outputsamples * (int64_t)alac->bytespersample;
   if (required <= 0 || required > INT_MAX || required > outbuffer_allocation_size)
   {
-    fprintf(stderr, "FIXME: Not enough space if the output buffer for audio frame - %s.\n", errtag);
+    LOG_ERROR("alac", "Not enough space if the output buffer for audio frame - %s.\n", errtag);
     *outputsize = 0;
     return -1;
   }
@@ -169,8 +169,8 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
 
   if (alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
   {
-    fprintf(stderr, "[alac] Clamping max_samples_per_frame %u to %u for static buffers.\n",
-            alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
+    LOG_WARN("alac", "Clamping max_samples_per_frame %u to %u for static buffers.\n",
+             alac->setinfo_max_samples_per_frame, ALAC_MAX_SAMPLES_PER_FRAME);
     alac->setinfo_max_samples_per_frame = ALAC_MAX_SAMPLES_PER_FRAME;
   }
 
@@ -182,81 +182,60 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
 /* supports reading 1 to 16 bits, in big endian format */
 static uint32_t readbits_16(alac_file *alac, int bits)
 {
-  uint32_t result;
-  int new_accumulator;
-
-  result = (alac->input_buffer[0] << 16) | (alac->input_buffer[1] << 8) | (alac->input_buffer[2]);
-
-  /* shift left by the number of bits we've already read,
-   * so that the top 'n' bits of the 24 bits we read will
-   * be the return bits */
-  result = result << alac->input_buffer_bitaccumulator;
-
-  result = result & 0x00ffffff;
-
-  /* and then only want the top 'n' bits from that, where
-   * n is 'bits' */
-  result = result >> (24 - bits);
-
-  new_accumulator = (alac->input_buffer_bitaccumulator + bits);
-
-  /* increase the buffer pointer if we've read over n bytes. */
-  alac->input_buffer += (new_accumulator >> 3);
-
-  /* and the remainder goes back into the bit accumulator */
-  alac->input_buffer_bitaccumulator = (new_accumulator & 7);
-
-  return result;
+  uint32_t value = 0;
+  if (bits < 0 || bits > 16 || alac->decode_error)
+  {
+    alac->decode_error = 1;
+    return 0;
+  }
+  size_t available = (size_t)(alac->input_end - alac->input_buffer) * 8;
+  if (available < (size_t)alac->input_buffer_bitaccumulator + (size_t)bits)
+  {
+    alac->decode_error = 1;
+    return 0;
+  }
+  while (bits--)
+  {
+    value = (value << 1) | ((*alac->input_buffer >> (7 - alac->input_buffer_bitaccumulator)) & 1);
+    if (++alac->input_buffer_bitaccumulator == 8)
+    {
+      ++alac->input_buffer;
+      alac->input_buffer_bitaccumulator = 0;
+    }
+  }
+  return value;
 }
 
-/* supports reading 1 to 32 bits, in big endian format */
 static uint32_t readbits(alac_file *alac, int bits)
 {
-  int32_t result = 0;
-
+  if (bits < 0 || bits > 32)
+  {
+    alac->decode_error = 1;
+    return 0;
+  }
+  uint32_t high = 0;
   if (bits > 16)
   {
     bits -= 16;
-    result = readbits_16(alac, 16) << bits;
+    high = readbits_16(alac, 16) << bits;
   }
-
-  result |= readbits_16(alac, bits);
-
-  return result;
+  return high | readbits_16(alac, bits);
 }
 
-/* reads a single bit */
-static int readbit(alac_file *alac)
-{
-  int result;
-  int new_accumulator;
-
-  result = alac->input_buffer[0];
-
-  result = result << alac->input_buffer_bitaccumulator;
-
-  result = result >> 7 & 1;
-
-  new_accumulator = (alac->input_buffer_bitaccumulator + 1);
-
-  alac->input_buffer += (new_accumulator / 8);
-
-  alac->input_buffer_bitaccumulator = (new_accumulator % 8);
-
-  return result;
-}
+static int readbit(alac_file *alac) { return (int)readbits_16(alac, 1); }
 
 static void unreadbits(alac_file *alac, int bits)
 {
-  int new_accumulator = (alac->input_buffer_bitaccumulator - bits);
-
-  alac->input_buffer += (new_accumulator >> 3);
-
-  alac->input_buffer_bitaccumulator = (new_accumulator & 7);
-  if (alac->input_buffer_bitaccumulator < 0)
-    alac->input_buffer_bitaccumulator *= -1;
+  size_t offset = (size_t)(alac->input_buffer - alac->input_start) * 8 + alac->input_buffer_bitaccumulator;
+  if (bits < 0 || (size_t)bits > offset)
+  {
+    alac->decode_error = 1;
+    return;
+  }
+  offset -= (size_t)bits;
+  alac->input_buffer = alac->input_start + offset / 8;
+  alac->input_buffer_bitaccumulator = (int)(offset % 8);
 }
-
 /* various implementations of count_leading_zero:
  * the first one is the original one, the simplest and most
  * obvious for what it's doing. never use this.
@@ -282,7 +261,7 @@ static int count_leading_zeros(int32_t input)
 /* for some reason the unrolled version (below) is
  * actually faster than this. yay intel!
  */
-static int count_leading_zeros(int input) { return __builtin_clz(input); }
+static int count_leading_zeros(int input) { return input ? __builtin_clz((unsigned)input) : 32; }
 #elif defined(_MSC_VER) && defined(_M_IX86)
 static int count_leading_zeros(int input)
 {
@@ -418,6 +397,9 @@ static void entropy_rice_decode(alac_file *alac, int32_t *outputBuffer, int outp
     // note: don't use rice_kmodifier_mask here (set mask to 0xFFFFFFFF)
     decodedValue = entropy_decode_value(alac, readSampleSize, k, 0xFFFFFFFF);
 
+    if (alac->decode_error)
+      return;
+
     decodedValue += signModifier;
     finalValue = (decodedValue + 1) / 2; // inc by 1 and shift out sign bit
     if (decodedValue & 1)                // the sign is stored in the low bit
@@ -444,6 +426,12 @@ static void entropy_rice_decode(alac_file *alac, int32_t *outputBuffer, int outp
 
       // note: blockSize is always 16bit
       blockSize = entropy_decode_value(alac, 16, k, rice_kmodifier_mask);
+
+      if (alac->decode_error || blockSize < 0 || blockSize > outputSize - outputCount - 1)
+      {
+        alac->decode_error = 1;
+        return;
+      }
 
       // got blockSize 0s
       if (blockSize > 0)
@@ -729,7 +717,7 @@ static void deinterlace_24(int32_t *buffer_a, int32_t *buffer_b, int uncompresse
   }
 }
 
-void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer, int *outputsize)
+static void decode_frame(alac_file *alac, const unsigned char *inbuffer, void *outbuffer, int *outputsize)
 {
   int outbuffer_allocation_size = *outputsize; // initial value
   int channels;
@@ -740,6 +728,12 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
   alac->input_buffer_bitaccumulator = 0;
 
   channels = readbits(alac, 3);
+
+  if (channels > 1 || channels + 1 != alac->numchannels)
+  {
+    alac->decode_error = 1;
+    return;
+  }
 
   if (set_output_size_checked(alac, outputsamples, outbuffer_allocation_size, outputsize, "E1") != 0)
     return;
@@ -779,6 +773,11 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
     }
 
     readsamplesize = alac->setinfo_sample_size - (uncompressed_bytes * 8);
+    if (readsamplesize <= 0 || readsamplesize > 32)
+    {
+      alac->decode_error = 1;
+      return;
+    }
 
     if (!isnotcompressed)
     { /* so it is compressed */
@@ -798,6 +797,12 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
 
       ricemodifier = readbits(alac, 3);
       predictor_coef_num = readbits(alac, 5);
+      if (prediction_type != 0 || (predictor_coef_num && !prediction_quantitization) ||
+          (predictor_coef_num != 31 && predictor_coef_num >= outputsamples))
+      {
+        alac->decode_error = 1;
+        return;
+      }
 
       /* read the predictor table */
       for (i = 0; i < predictor_coef_num; i++)
@@ -827,8 +832,8 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
       }
       else
       {
-        fprintf(stderr, "FIXME: unhandled prediction type for compressed case: %i (fallback to adaptive FIR)\n",
-                prediction_type);
+        LOG_WARN("alac", "Unhandled prediction type for compressed case: %i (fallback to adaptive FIR)\n",
+                 prediction_type);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_a, alac->outputsamples_buffer_a,
                                        outputsamples, readsamplesize, predictor_coef_table,
                                        predictor_coef_num, prediction_quantitization);
@@ -911,7 +916,7 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
     }
     case 20:
     case 32:
-      fprintf(stderr, "FIXME: unimplemented sample size %i\n", alac->setinfo_sample_size);
+      LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
       break;
     default:
       break;
@@ -953,6 +958,11 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
     }
 
     readsamplesize = alac->setinfo_sample_size - (uncompressed_bytes * 8) + 1;
+    if (readsamplesize <= 0 || readsamplesize > 32)
+    {
+      alac->decode_error = 1;
+      return;
+    }
 
     if (!isnotcompressed)
     { /* compressed */
@@ -972,6 +982,11 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
 
       interlacing_shift = readbits(alac, 8);
       interlacing_leftweight = readbits(alac, 8);
+      if (interlacing_shift > 31)
+      {
+        alac->decode_error = 1;
+        return;
+      }
 
       /******** channel 1 ***********/
       prediction_type_a = readbits(alac, 4);
@@ -979,6 +994,12 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
 
       ricemodifier_a = readbits(alac, 3);
       predictor_coef_num_a = readbits(alac, 5);
+      if (prediction_type_a != 0 || (predictor_coef_num_a && !prediction_quantitization_a) ||
+          (predictor_coef_num_a != 31 && predictor_coef_num_a >= outputsamples))
+      {
+        alac->decode_error = 1;
+        return;
+      }
 
       /* read the predictor table */
       for (i = 0; i < predictor_coef_num_a; i++)
@@ -992,6 +1013,12 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
 
       ricemodifier_b = readbits(alac, 3);
       predictor_coef_num_b = readbits(alac, 5);
+      if (prediction_type_b != 0 || (predictor_coef_num_b && !prediction_quantitization_b) ||
+          (predictor_coef_num_b != 31 && predictor_coef_num_b >= outputsamples))
+      {
+        alac->decode_error = 1;
+        return;
+      }
 
       /* read the predictor table */
       for (i = 0; i < predictor_coef_num_b; i++)
@@ -1024,7 +1051,7 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
       }
       else
       { /* see mono case */
-        fprintf(stderr, "FIXME: unhandled prediction type on channel 1: %i (fallback to adaptive FIR)\n", prediction_type_a);
+        LOG_WARN("alac", "Unhandled prediction type on channel 1: %i (fallback to adaptive FIR)\n", prediction_type_a);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_a, alac->outputsamples_buffer_a,
                                        outputsamples, readsamplesize, predictor_coef_table_a,
                                        predictor_coef_num_a, prediction_quantitization_a);
@@ -1044,7 +1071,7 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
       }
       else
       {
-        fprintf(stderr, "FIXME: unhandled prediction type on channel 2: %i (fallback to adaptive FIR)\n", prediction_type_b);
+        LOG_WARN("alac", "Unhandled prediction type on channel 2: %i (fallback to adaptive FIR)\n", prediction_type_b);
         predictor_decompress_fir_adapt(alac->predicterror_buffer_b, alac->outputsamples_buffer_b,
                                        outputsamples, readsamplesize, predictor_coef_table_b,
                                        predictor_coef_num_b, prediction_quantitization_b);
@@ -1114,7 +1141,7 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
     }
     case 20:
     case 32:
-      fprintf(stderr, "FIXME: unimplemented sample size %i\n", alac->setinfo_sample_size);
+      LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
       break;
     default:
       break;
@@ -1123,6 +1150,24 @@ void alac_decode_frame(alac_file *alac, unsigned char *inbuffer, void *outbuffer
     break;
   }
   }
+}
+
+void alac_decode_frame(alac_file *alac, const unsigned char *input, size_t inputsize,
+                       void *output, int *outputsize)
+{
+  if (!outputsize)
+    return;
+  if (!alac || !input || !inputsize || !output || alac->samplesize != 16)
+  {
+    *outputsize = 0;
+    return;
+  }
+  alac->input_start = input;
+  alac->input_end = input + inputsize;
+  alac->decode_error = 0;
+  decode_frame(alac, input, output, outputsize);
+  if (alac->decode_error)
+    *outputsize = 0;
 }
 
 alac_file *alac_create(int samplesize, int numchannels)
@@ -1144,6 +1189,6 @@ alac_file *alac_create(int samplesize, int numchannels)
     }
   }
 
-  fprintf(stderr, "[alac] No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
+  LOG_ERROR("alac", "No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
   return NULL;
 }
