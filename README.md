@@ -1,7 +1,7 @@
 # Portable AirPlay Speaker
 
 [![CMake](https://img.shields.io/badge/build-CMake%203.20%2B-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
-[![Language](https://img.shields.io/badge/language-C11-1f6feb?logo=c&logoColor=white)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
+[![Language](https://img.shields.io/badge/language-C11-1f6feb?logo=c&logoColor=white)](<https://en.wikipedia.org/wiki/C11_(C_standard_revision)>)
 [![GitHub stars](https://img.shields.io/github/stars/Jiajun-Huang/airplay?style=flat&logo=github)](https://github.com/Jiajun-Huang/airplay/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/Jiajun-Huang/airplay)](https://github.com/Jiajun-Huang/airplay/issues)
 
