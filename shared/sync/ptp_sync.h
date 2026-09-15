@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 #ifndef AIRPLAY_PTP_SYNC_H
 #define AIRPLAY_PTP_SYNC_H
 #include "net.h"

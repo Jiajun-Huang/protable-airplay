@@ -6,7 +6,7 @@
  * defaults, memory limits, and embedded task sizing.
  * Rebuild the target after changing any value
  * in this file. */
-#define AIRPLAY_LOG_LEVEL LOG_LEVEL_DEBUG
+#define AIRPLAY_LOG_LEVEL AIRPLAY_LOG_DEBUG
 
 /* Device identity. The CLI NAME argument or airplay_config_t.device_name can override the name. */
 #define AIRPLAY_DEVICE_NAME    "TestSpeaker"

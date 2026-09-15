@@ -1,16 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
 #ifndef AIRPLAY_BPLIST_H
 #define AIRPLAY_BPLIST_H
 #include <stddef.h>

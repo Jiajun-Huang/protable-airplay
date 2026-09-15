@@ -787,10 +787,9 @@ typedef int (*pipeline_deadline_fn)(audio_pipeline_t *pipeline,
 static int pipeline_poll_inputs(audio_pipeline_t *pipeline, int timeout_ms)
 {
     assert(pipeline);
-    assert(pipeline->timing_peer.port);
 
     uint8_t request[32];
-    if (ntp_sync_request(&pipeline->ntp_sync, request)) // 
+    if (pipeline->timing_peer.port && ntp_sync_request(&pipeline->ntp_sync, request))
         net_udp_send(
             &pipeline->rtp.timing_socket, request, sizeof(request), &pipeline->timing_peer);
     /* Return to playback scheduling promptly while audio is active. */
