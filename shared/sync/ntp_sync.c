@@ -1,27 +1,34 @@
 #include "sync/ntp_sync.h"
 #include "os.h"
+#include "util/log.h"
 #include <string.h>
 
-#define NTP_EPOCH_OFFSET 2208988800ULL
-#define NTP_PACKET_SIZE 32
-#define NTP_VERSION 2
-#define NTP_VERSION_HEADER 0x80
-#define NTP_REQUEST_HEADER 0xd2
-#define NTP_REPLY_HEADER 0xd3
-#define NTP_MESSAGE_TYPE_MASK 0x7f
-#define NTP_REQUEST_TYPE 0x52
-#define NTP_REPLY_TYPE 0x53
-#define NTP_REQUEST_SEQUENCE 7
-#define NTP_ORIGIN_TIMESTAMP_OFFSET 8
-#define NTP_RECEIVE_TIMESTAMP_OFFSET 16
+#define NTP_EPOCH_OFFSET              2208988800ULL
+#define NTP_PACKET_SIZE               32
+#define NTP_VERSION                   2
+#define NTP_VERSION_HEADER            0x80
+#define NTP_REQUEST_HEADER            0xd2
+#define NTP_REPLY_HEADER              0xd3
+#define NTP_MESSAGE_TYPE_MASK         0x7f
+#define NTP_REQUEST_TYPE              0x52
+#define NTP_REPLY_TYPE                0x53
+#define NTP_REQUEST_SEQUENCE          7
+#define NTP_ORIGIN_TIMESTAMP_OFFSET   8
+#define NTP_RECEIVE_TIMESTAMP_OFFSET  16
 #define NTP_TRANSMIT_TIMESTAMP_OFFSET 24
 
 /*
- 
-
+NTP format (32 bytes):
++--------+--------+--------+--------+
+| LI() | VN | Mode |    Reserved    |
++--------+--------+--------+--------+
+|          Originate Timestamp (32 bits)         |
++-----------------------------------------------+
+|          Receive Timestamp (32 bits)             |
++-----------------------------------------------+
+|          Transmit Timestamp (32 bits)            |
++-----------------------------------------------+
 */
-
-
 
 /**
  * @brief read32.
@@ -64,7 +71,7 @@ static void write_time(uint8_t *p, ntp_timestamp_t t)
     write32(p + 4, t.fraction);
 }
 /**
- * @brief from_us.
+ * @brief Convert microseconds to NTP timestamp.
  * @param us Parameter named us.
  * @return Function result.
  */
@@ -101,26 +108,40 @@ int ntp_sync_request(ntp_sync_t *sync, uint8_t packet[NTP_PACKET_SIZE])
     packet[1] = NTP_REQUEST_HEADER;
     packet[3] = NTP_REQUEST_SEQUENCE;
     /* The originate timestamp in the reply must match this exact transmit time. */
-    sync->request_local_us = now;
-    sync->request_time = from_us(now);
-    write_time(packet + NTP_TRANSMIT_TIMESTAMP_OFFSET, sync->request_time);
+    sync->request_local_us = now;      // t1
+    sync->request_time = from_us(now); // t1 in NTP format
+    write_time(&packet[NTP_TRANSMIT_TIMESTAMP_OFFSET], sync->request_time);
     sync->request_pending = 1;
+
+    // next due time 250 ms for first 4 requests, then 2 s afterwards
     sync->next_request_us = now + (++sync->requests <= 4 ? 250000 : 2000000);
     return 1;
 }
 int ntp_sync_process_packet(ntp_sync_t *sync, const uint8_t *data, size_t len)
 {
     if (!sync || !data || len < NTP_PACKET_SIZE || (data[0] >> 6) != NTP_VERSION ||
-        (data[1] & NTP_MESSAGE_TYPE_MASK) != NTP_REPLY_TYPE ||
-        !sync->request_pending)
+        (data[1] & NTP_MESSAGE_TYPE_MASK) != NTP_REPLY_TYPE || !sync->request_pending)
+    {
+        LOG_WARN("Invalid NTP reply: version=%u type=%u pending=%d\n",
+                 (unsigned)(data[0] >> 6),
+                 (unsigned)(data[1] & NTP_MESSAGE_TYPE_MASK),
+                 sync->request_pending);
         return -1;
-    uint64_t now = os_time_us();
-    ntp_timestamp_t origin = read_time(data + NTP_ORIGIN_TIMESTAMP_OFFSET);
+    }
+    uint64_t now = os_time_us();                                            // t1
+    ntp_timestamp_t origin = read_time(&data[NTP_ORIGIN_TIMESTAMP_OFFSET]); // t1 in NTP format
     if (origin.seconds != sync->request_time.seconds ||
         origin.fraction != sync->request_time.fraction)
+    {
+        LOG_WARN("NTP reply does not match request: origin=%u.%u request=%u.%u\n",
+                 origin.seconds,
+                 origin.fraction,
+                 sync->request_time.seconds,
+                 sync->request_time.fraction);
         return -1;
-    ntp_timestamp_t receive = read_time(data + NTP_RECEIVE_TIMESTAMP_OFFSET),
-                     transmit = read_time(data + NTP_TRANSMIT_TIMESTAMP_OFFSET);
+    }
+    ntp_timestamp_t receive = read_time(&data[NTP_RECEIVE_TIMESTAMP_OFFSET]), // t2 in NTP format
+        transmit = read_time(&data[NTP_TRANSMIT_TIMESTAMP_OFFSET]);           // t3 in NTP format
     /* NTP timing exchange: t1=request sent, t2=peer received, t3=peer sent, t4=reply received. */
     int64_t processing = ntp_sync_diff_us(receive, transmit);
     int64_t rtt = (int64_t)(now - sync->request_local_us) - processing;
@@ -154,11 +175,12 @@ int ntp_sync_reply(const uint8_t *request, size_t len, uint8_t reply[32])
     reply[1] = NTP_REPLY_HEADER;
     reply[2] = request[2];
     reply[3] = request[3];
-        memcpy(reply + NTP_ORIGIN_TIMESTAMP_OFFSET,
-            request + NTP_TRANSMIT_TIMESTAMP_OFFSET,
-            sizeof(ntp_timestamp_t));
-        write_time(reply + NTP_RECEIVE_TIMESTAMP_OFFSET, now);
-        write_time(reply + NTP_TRANSMIT_TIMESTAMP_OFFSET, ntp_sync_now());
+    /* Copy the origin timestamp from the request to the reply. */
+    memcpy(&reply[NTP_ORIGIN_TIMESTAMP_OFFSET],
+           &request[NTP_ORIGIN_TIMESTAMP_OFFSET],
+           sizeof(ntp_timestamp_t));
+    write_time(&reply[NTP_RECEIVE_TIMESTAMP_OFFSET], now);
+    write_time(&reply[NTP_TRANSMIT_TIMESTAMP_OFFSET], ntp_sync_now());
     return 0;
 }
 int ntp_sync_control(ntp_sync_t *sync, const uint8_t *data, size_t len, uint32_t rate)
@@ -166,12 +188,13 @@ int ntp_sync_control(ntp_sync_t *sync, const uint8_t *data, size_t len, uint32_t
     if (!sync || !data || len < 20 || (data[0] >> 6) != 2 || (data[1] & 0x7f) != 0x54 || !rate)
         return -1;
     /* This control packet binds an RTP timestamp to the sender's NTP timeline. */
-    uint32_t playing = read32(data + 4), sending = read32(data + 16);
+    uint32_t playing = read32(&data[4]);
+    uint32_t sending = read32(&data[16]);
     uint32_t latency = sending - playing;
-    if (latency > (uint64_t)rate * 10)
+    if (latency > (uint64_t)rate * 10) //
         return -1;
     sync->rtp_base = playing;
-    sync->ntp_base = read_time(data + 8);
+    sync->ntp_base = read_time(&data[8]);
     sync->latency_frames = latency;
     sync->anchor_valid = 1;
     return 0;

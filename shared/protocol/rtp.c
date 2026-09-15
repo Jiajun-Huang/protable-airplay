@@ -1,5 +1,6 @@
 #include "protocol/rtp.h"
 
+#include <assert.h>
 #include <string.h>
 int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet)
 {
@@ -90,6 +91,12 @@ int rtp_receiver_create(rtp_receiver_t *receiver, const rtp_receiver_config_t *c
 
 int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
 {
+
+    assert(receiver);
+    assert(receiver->audio_socket.handle);
+    assert(receiver->control_socket.handle);
+    assert(receiver->timing_socket.handle);
+
     net_socket_t sockets[3];
     uint8_t ready[3];
     uint8_t *buffers[3];
@@ -126,6 +133,8 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
                 continue;
             if (receiver->peer_ip[0] && strcmp(peer.ip, receiver->peer_ip) != 0)
                 continue;
+
+            // audio packer or control packet with RAOP retransmit response (0x56) or timing packet
             if (i == 0 || (i == 1 && length >= 2 && (buffers[i][1] & 0x7f) == 0x56))
             {
                 rtp_packet_t packet;
@@ -134,11 +143,11 @@ int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms)
                     receiver->config.audio_cb)
                     receiver->config.audio_cb(&packet, receiver->config.user_data);
             }
-            else if (i == 1 && receiver->config.control_cb)
+            else if (i == 1)
             {
                 receiver->config.control_cb(buffers[i], (size_t)length, receiver->config.user_data);
             }
-            else if (i == 2 && receiver->config.timing_cb)
+            else if (i == 2)
             {
                 receiver->config.timing_cb(
                     buffers[i], (size_t)length, &peer, receiver->config.user_data);

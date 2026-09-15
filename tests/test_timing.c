@@ -337,7 +337,7 @@ static void test_airplay2_scheduled_alac(void)
                              .bits_per_sample = 16,
                              .frames_per_packet = 352,
                              .payload_type = 96,
-                             .stream_type = 96};
+                             .stream_type = AIRPLAY_STREAM_TYPE_REALTIME};
     for (unsigned i = 0; i < 32; ++i)
         session.audio_key[i] = (uint8_t)i;
     writes = 0;

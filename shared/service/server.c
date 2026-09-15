@@ -209,13 +209,21 @@ static int start_audio_session(airplay_server_t *server,
         return 0;
 
     close_audio(server);
-    if (audio_pipeline_configure(&server->pipeline, &stream->session) != 0 ||
-        audio_open(&server->audio,
+    
+    if (audio_pipeline_configure(&server->pipeline, &stream->session) != 0)
+        return -1;
+
+    if (audio_open(&server->audio,
                    stream->session.sample_rate,
                    (uint8_t)stream->session.channels,
-                   16) != 0 ||
-        audio_pipeline_start(&server->pipeline) != 0)
+                   16) != 0)
         return -1;
+
+    if (audio_pipeline_start(&server->pipeline) != 0)
+    {
+        close_audio(server);
+        return -1;
+    }
 
     state->generation = stream->generation;
     state->flush_generation = stream->flush_generation;
@@ -224,7 +232,8 @@ static int start_audio_session(airplay_server_t *server,
     if (stream->has_timestamp_floor)
         audio_pipeline_set_start(
             &server->pipeline, stream->timestamp_floor, stream->floor_exclusive);
-    if (stream->has_buffered_flush_sequence && stream->session.stream_type == 103)
+    if (stream->has_buffered_flush_sequence &&
+        stream->session.stream_type == AIRPLAY_STREAM_TYPE_BUFFERED)
         buffered_audio_flush(&server->pipeline.buffered, stream->buffered_flush_sequence);
     return 0;
 }
@@ -269,7 +278,7 @@ void airplay_audio_main(void *arg)
             update_audio_volume(server, &stream, &state);
         }
        
-        if (stream.session.stream_type != 96) // For buffered audio and RAOP timing, update the PTP anchor if it has changed.
+        if (stream.session.stream_type != AIRPLAY_STREAM_TYPE_REALTIME) // For buffered audio and RAOP timing, update the PTP anchor if it has changed.
         {
             server->pipeline.anchor = stream.anchor;
             ptp_sync_set_clock(&server->pipeline.ptp, stream.anchor.clock_id);

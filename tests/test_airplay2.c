@@ -3,6 +3,7 @@
 #include "airplay_config.h"
 #include "crypto/crypto_memory.h"
 #include "protocol/bplist.h"
+#include "protocol/sdp.h"
 #include "sync/ptp_sync.h"
 #include "util/log.h"
 #include <stdlib.h>
@@ -100,7 +101,8 @@ static void test_plist(void)
     uint32_t streams = bplist_get(&p, p.root, "streams");
     CHECK(bplist_count(&p, streams) == 1 && bplist_at(&p, streams, 1) == BPLIST_NONE);
     uint32_t stream = bplist_at(&p, streams, 0);
-    CHECK(!bplist_uint(&p, bplist_get(&p, stream, "type"), &type) && type == 103);
+        CHECK(!bplist_uint(&p, bplist_get(&p, stream, "type"), &type) &&
+            type == AIRPLAY_STREAM_TYPE_BUFFERED);
     const uint8_t *key;
     size_t key_size;
     CHECK(!bplist_bytes(&p, bplist_get(&p, stream, "shk"), &key, &key_size) && key_size == 32);

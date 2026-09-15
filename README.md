@@ -2,47 +2,110 @@
 
 A portable C AirPlay audio receiver for computers and embedded systems. It supports traditional RAOP over UDP and AirPlay 2 realtime ALAC over UDP or buffered AAC over TCP. Audio is decrypted, decoded, and scheduled against the sender's NTP or PTP clock. One audio stream is active at a time.
 
-## System Overview
+## Portable library
 
-![System architecture: AirPlay 1 and AirPlay 2 protocol paths share three services, one audio pipeline, and four platform backends](docs/images/system-architecture.svg)
+The shared AirPlay receiver is designed as a portable C library. Protocol handling,
+packet buffering, decoding orchestration, clock mapping, pairing, and playback
+scheduling do not call operating-system APIs directly. To port the library to a
+new platform, implement the contracts in:
 
-The shared core owns discovery, session control, decoding, and playback scheduling. Each platform provides networking, mutexes, time, and audio output, and starts three native threads or FreeRTOS tasks:
+- `platform/net.h`: TCP/UDP sockets, multicast, polling, and network lifecycle.
+- `platform/os.h`: mutexes, sleeping, and a UTC microsecond clock.
+- `platform/audio.h`: open an output device, write interleaved 16-bit PCM, report
+  queued output delay, and close the device.
 
-| Service | Entry point | Responsibility |
-| --- | --- | --- |
-| Discovery | `airplay_mdns_main` | Advertise `_raop._tcp` and `_airplay._tcp` through mDNS |
-| Session control | `airplay_rtsp_main` | Handle RTSP requests and publish synchronized session state |
-| Audio | `airplay_audio_main` | Receive UDP/TCP audio, synchronize clocks, buffer packets, decode, and output PCM |
+The platform entry point must initialize networking, create an `airplay_config_t`,
+start the three service threads or tasks, and stop them before releasing the
+platform resources. The existing Windows, Apple, and Linux directories are
+reference implementations. Windows is the implementation currently tested by
+the project; Apple and Linux builds have not been validated by us yet. Volunteers
+are welcome to test those backends and open a pull request with fixes or test
+results.
 
-```text
-airplay_config.h   Device identity, service ports, audio defaults, memory limits, task settings
-shared/airplay/    AirPlay 1 and AirPlay 2 discovery, control, pairing, and FairPlay
-shared/audio/      Audio receive pipeline, buffered transport, packet queue, and scheduling
-shared/codec/      ALAC and AAC decoder adapters
-shared/crypto/     Shared audio cryptography
-shared/protocol/   Binary plist, mDNS, RTP, RTSP, and SDP wire formats
-shared/service/    Top-level discovery, control, and audio service lifecycle
-shared/sync/       NTP and PTP clock mapping
-shared/util/       Logging and network-format helpers
-platform/net.h     TCP/UDP interface
-platform/os.h      Mutex, sleep, and UTC clock interface
-platform/audio.h   PCM output interface
-platform/windows/  Winsock, Windows threads, and waveOut output
-platform/apple/    BSD sockets, macOS pthreads, and AudioQueue output
-platform/linux/    Linux sockets, pthreads, and ALSA output
-platform/embedded/ lwIP, FreeRTOS tasks, and board audio/clock interfaces
-tests/             Protocol, network, lifecycle, decoding, and timing tests
-```
+The embedded backend shows the same approach with FreeRTOS, lwIP, and board-owned
+audio and clock functions. A different RTOS, socket stack, or audio driver can be
+used as long as it satisfies the three platform interfaces above.
 
-![Audio flow: session state, sender clock, and output delay control buffered RTP playback](docs/images/audio-flow.svg)
+## Dependencies
 
-The platform initializes networking and the server, starts the three services, waits for them to stop, and releases resources. The RTSP service publishes session snapshots under a mutex; the audio service owns the decoder and audio device. Platform implementations are selected at build time.
+The project keeps external dependencies focused on the parts that are difficult
+to implement safely in the shared core:
 
-Each platform directory contains its own `net.c`, `os.c`, and `audio.c`. CMake selects one set of implementations; shared services depend only on the platform headers. The embedded network adapter calls the `lwip_*` APIs directly.
+- [mbedTLS 2.28.8](https://github.com/Mbed-TLS/mbedtls) provides AES-128, RSA,
+  SHA-1, Base64, entropy, and random-number support used by AirPlay encryption,
+  FairPlay, and pairing. Only the static `mbedcrypto` target is used.
+- [FDK-AAC 2.0.3](https://github.com/mstorsjo/fdk-aac) decodes AAC streams used by
+  AirPlay 2 buffered audio. ALAC decoding is provided by the project's own
+  adapter and does not require a separate codec package.
+- The C standard library and the selected platform SDK provide the remaining
+  runtime, socket, threading, and audio facilities.
 
-The shared core is independent of the processor and operating system. The included embedded backend uses FreeRTOS and lwIP with board-supplied audio and clock functions. Other embedded environments can reuse the core by implementing the `net.h`, `os.h`, and `audio.h` contracts and starting the service tasks in their platform entry point.
+CPM fetches these dependencies during CMake configuration. They are linked
+statically; the shared library does not require a separate runtime service.
 
-Edit [airplay_config.h](airplay_config.h) to configure the speaker name, ports, and memory limits, then rebuild. The default name is `TestSpeaker`. Runtime IP, MAC, and optional name are passed through `airplay_config_t`.
+## Runtime architecture
+
+The receiver starts three independent services:
+
+| Thread or task       | Responsibility                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `airplay_mdns_main`  | Owns mDNS discovery traffic and advertises the receiver as an AirPlay speaker.                                                                               |
+| `airplay_rtsp_main`  | Owns the RTSP control connection, handles setup/record/flush requests, and publishes a mutex-protected session snapshot.                                     |
+| `airplay_audio_main` | Reads the session snapshot, receives audio/control/timing traffic, buffers and schedules packets, decodes them, and writes PCM to the platform audio device. |
+
+### Audio pipeline
+
+The audio pipeline converts network packets into timed PCM output:
+
+1. RTP or buffered TCP audio is received and placed into the playout queue.
+2. AirPlay encryption is removed when required.
+3. ALAC, AAC, or PCM payloads are decoded into interleaved signed 16-bit PCM.
+4. The stream volume is applied and the platform `audio_write()` callback is called.
+5. Packet timestamps and the platform's queued-frame delay determine when a packet is submitted.
+
+Traditional RAOP uses UDP RTP audio. AirPlay 2 realtime uses encrypted UDP audio,
+and AirPlay 2 buffered mode uses the buffered TCP transport. The pipeline hides
+these transport differences from the platform audio backend.
+
+### Codecs
+
+The SDP session announces the codec and audio format. The pipeline supports:
+
+- ALAC (Apple Lossless), decoded by the in-tree ALAC adapter.
+- AAC, decoded through FDK-AAC for AirPlay 2 buffered streams.
+- Linear PCM, decoded directly from RTP network byte order.
+
+The decoded format exposed to every platform is interleaved signed 16-bit PCM.
+
+### Clock synchronization
+
+Playback cannot be scheduled from packet arrival time alone. RTP control packets
+provide an RTP-to-sender-clock anchor. Traditional RAOP then uses NTP timing
+exchanges to measure sender/local clock offset. AirPlay 2 uses PTP and sender
+anchors. The pipeline converts each RTP timestamp into a local playback deadline,
+keeps packets queued until that deadline, and accounts for audio frames already
+queued in the platform output device.
+
+### Pairing and encryption
+
+Pairing authenticates the sender and establishes the cryptographic material needed
+for protected audio sessions. The AirPlay/FairPlay code handles the protocol
+exchange, while the crypto layer unwraps session keys and initializes AES for
+audio decryption. RTSP session setup supplies the resulting format and key data
+to the audio pipeline; the platform backend does not need to know about pairing
+or encryption.
+
+## Embedded-friendly design
+
+The shared code avoids direct calls to `malloc`, `calloc`, `realloc`, and `free`.
+Its main buffers and protocol state are owned by caller-provided structures,
+which makes the core suitable for embedded systems with predictable memory
+budgets. mbedTLS uses its fixed-buffer allocator, configured through
+`AIRPLAY_CRYPTO_MEMORY_SIZE`. External components such as FDK-AAC, the platform
+SDK, and the board audio driver may still have their own allocation requirements.
+
+Edit [airplay_config.h](airplay_config.h) to configure the speaker name, ports,
+audio defaults, and memory limits. The default name is `TestSpeaker`.
 
 ## Build
 

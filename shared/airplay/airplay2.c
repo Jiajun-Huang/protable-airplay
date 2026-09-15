@@ -196,7 +196,8 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
               (unsigned long long)codec,
               (unsigned long long)rate,
               (unsigned long long)frames);
-    if ((type != 96 && type != 103) || (codec != 2 && codec != 4) ||
+    if ((type != AIRPLAY_STREAM_TYPE_REALTIME && type != AIRPLAY_STREAM_TYPE_BUFFERED) ||
+        (codec != 2 && codec != 4) ||
         (rate != 44100 && rate != 48000) ||
         (codec == 2 ? (!frames || frames > ALAC_MAX_SAMPLES_PER_FRAME) : frames != 1024))
         return status(c, r, 415, "Unsupported Media Type");
@@ -211,7 +212,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
     uint64_t latency = number(p, stream, "latencyMin", AIRPLAY2_REALTIME_LATENCY_FRAMES);
     if (latency > rate * 5 || stream_key(p, stream, &c->pairing, session.audio_key))
         return status(c, r, 400, "Bad Request");
-    session.latency_frames = type == 96 ? (uint32_t)latency : 0;
+    session.latency_frames = type == AIRPLAY_STREAM_TYPE_REALTIME ? (uint32_t)latency : 0;
     if (codec == 4)
     {
         /* AAC-LC AudioSpecificConfig: object type 2, rate index, stereo. */
@@ -232,9 +233,13 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
     s->stream_owner = c;
     os_mutex_unlock(&s->state_lock);
     add_int(&w, refs, &n, "type", type);
-    add_int(&w, refs, &n, "dataPort", type == 103 ? AIRPLAY_BUFFERED_PORT : AIRPLAY_AUDIO_PORT);
+        add_int(&w,
+            refs,
+            &n,
+            "dataPort",
+            type == AIRPLAY_STREAM_TYPE_BUFFERED ? AIRPLAY_BUFFERED_PORT : AIRPLAY_AUDIO_PORT);
     add_int(&w, refs, &n, "controlPort", AIRPLAY_CONTROL_PORT);
-    if (type == 103)
+    if (type == AIRPLAY_STREAM_TYPE_BUFFERED)
         add_int(&w, refs, &n, "audioBufferSize", AIRPLAY_PLAYOUT_PACKETS * PLAYOUT_PAYLOAD_BYTES);
     uint32_t dict = bplist_add_dict(&w, refs, n / 2);
     uint32_t array = bplist_add_array(&w, &dict, 1);

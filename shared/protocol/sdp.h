@@ -6,6 +6,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define AIRPLAY_STREAM_TYPE_REALTIME 96
+#define AIRPLAY_STREAM_TYPE_BUFFERED 103
+
 /**
  * @brief SDP (Session Description Protocol) parser for AirPlay ANNOUNCE
  * Parses SDP payload from RTSP ANNOUNCE to extract codec parameters and encryption material.
@@ -46,7 +49,7 @@ typedef struct
 
     // RTP
     uint8_t payload_type; // RTP payload type (usually 96)
-    uint16_t stream_type; // 0 = RAOP, 96 = AirPlay 2 realtime, 103 = buffered
+    uint16_t stream_type; // 0 = RAOP, AIRPLAY_STREAM_TYPE_REALTIME = realtime, AIRPLAY_STREAM_TYPE_BUFFERED = buffered
     uint8_t audio_key[32];
     uint32_t latency_frames;
 
