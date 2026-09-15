@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 #ifndef AIRPLAY_SERVER_H
 #define AIRPLAY_SERVER_H
 
@@ -20,6 +27,10 @@ typedef struct
 } airplay_config_t;
 
 /* The RAOP instance label also contains a 12-digit MAC and '@' (DNS limit: 63 bytes). */
+/**
+ * @brief _Static_assert.
+ * @return Function result.
+ */
 _Static_assert(sizeof(AIRPLAY_DEVICE_NAME) > 1 && sizeof(AIRPLAY_DEVICE_NAME) <= 51,
                "AIRPLAY_DEVICE_NAME must contain 1..50 UTF-8 bytes");
 
@@ -46,21 +57,57 @@ typedef struct
 
 /* Platform calls net_init first. All sockets open before init succeeds.
  * Start each of the three service functions exactly once after successful init. */
+/**
+ * @brief airplay_server_init.
+ * @param server Parameter named server.
+ * @param config Parameter named config.
+ * @return Function result.
+ */
 int airplay_server_init(airplay_server_t *server, const airplay_config_t *config);
 /* Run the mDNS discovery loop until the server is stopped. */
+/**
+ * @brief airplay_mdns_main.
+ * @param server Parameter named server.
+ */
 void airplay_mdns_main(void *server);
 /* Run the RTSP control loop until the server is stopped. */
+/**
+ * @brief airplay_rtsp_main.
+ * @param server Parameter named server.
+ */
 void airplay_rtsp_main(void *server);
 /* Run packet receive, synchronization, decode, and PCM output until stopped. */
+/**
+ * @brief airplay_audio_main.
+ * @param server Parameter named server.
+ */
 void airplay_audio_main(void *server);
 
 /* Thread-safe; service I/O uses finite timeouts so stop does not close live sockets. */
+/**
+ * @brief airplay_server_stop.
+ * @param server Parameter named server.
+ */
 void airplay_server_stop(airplay_server_t *server);
 /* Return nonzero after a stop request or fatal service failure. */
+/**
+ * @brief airplay_server_is_stopping.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 int airplay_server_is_stopping(airplay_server_t *server);
 /* Return zero for a clean stop or -1 after a service failure. */
+/**
+ * @brief airplay_server_result.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 int airplay_server_result(airplay_server_t *server);
 /* Join every started task, read result, then deinit; platform finally calls net_deinit. */
+/**
+ * @brief airplay_server_deinit.
+ * @param server Parameter named server.
+ */
 void airplay_server_deinit(airplay_server_t *server);
 
 #endif

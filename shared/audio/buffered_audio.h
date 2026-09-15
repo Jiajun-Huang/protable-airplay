@@ -1,3 +1,8 @@
+
+
+
+
+
 #ifndef AIRPLAY_BUFFERED_AUDIO_H
 #define AIRPLAY_BUFFERED_AUDIO_H
 #include "protocol/rtp.h"
@@ -16,17 +21,48 @@ typedef struct
 } buffered_audio_t;
 
 /* Initialize an unopened buffered transport instance. */
+/**
+ * @brief buffered_audio_init.
+ * @param b Parameter named b.
+ */
 void buffered_audio_init(buffered_audio_t *b);
 /* Open the TCP listener on port. */
+/**
+ * @brief buffered_audio_open.
+ * @param b Parameter named b.
+ * @param port Parameter named port.
+ * @return Function result.
+ */
 int buffered_audio_open(buffered_audio_t *b, uint16_t port);
 /* Close the active sender connection and clear partial receive state. */
+/**
+ * @brief buffered_audio_disconnect.
+ * @param b Parameter named b.
+ */
 void buffered_audio_disconnect(buffered_audio_t *b);
 /* Close the sender and listener sockets. */
+/**
+ * @brief buffered_audio_close.
+ * @param b Parameter named b.
+ */
 void buffered_audio_close(buffered_audio_t *b);
 /* Discard through this 24-bit wire sequence, preserving any partial TCP record. */
+/**
+ * @brief buffered_audio_flush.
+ * @param b Parameter named b.
+ * @param until_sequence Parameter named until_sequence.
+ */
 void buffered_audio_flush(buffered_audio_t *b, uint32_t until_sequence);
 /* Accept or receive at most one complete record and deliver it through callback.
  * Partial TCP records survive timeouts. Returns 1 for a consumed record, 0 on idle. */
+/**
+ * @brief buffered_audio_poll.
+ * @param b Parameter named b.
+ * @param peer_ip Parameter named peer_ip.
+ * @param callback Parameter named callback.
+ * @param context Parameter named context.
+ * @return Function result.
+ */
 int buffered_audio_poll(buffered_audio_t *b,
                         const char *peer_ip,
                         rtp_audio_callback callback,

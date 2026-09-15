@@ -56,6 +56,10 @@ int audio_open(audio_device_t **device, uint32_t sample_rate, uint8_t channels, 
     return 0;
 }
 
+/**
+ * @brief monotonic_ms.
+ * @return Function result.
+ */
 static uint64_t monotonic_ms(void)
 {
     struct timespec time;

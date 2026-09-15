@@ -7,12 +7,22 @@
 #define DNS_HEADER_SIZE 12
 #define DNS_RR_SIZE     10
 
+/**
+ * @brief write_u16.
+ * @param data Parameter named data.
+ * @param value Parameter named value.
+ */
 static void write_u16(uint8_t *data, uint16_t value)
 {
     data[0] = (uint8_t)(value >> 8);
     data[1] = (uint8_t)value;
 }
 
+/**
+ * @brief write_u32.
+ * @param data Parameter named data.
+ * @param value Parameter named value.
+ */
 static void write_u32(uint8_t *data, uint32_t value)
 {
     data[0] = (uint8_t)(value >> 24);
@@ -21,11 +31,24 @@ static void write_u32(uint8_t *data, uint32_t value)
     data[3] = (uint8_t)value;
 }
 
+/**
+ * @brief read_u16.
+ * @param data Parameter named data.
+ * @return Function result.
+ */
 static uint16_t read_u16(const uint8_t *data)
 {
     return (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
 }
 
+/**
+ * @brief write_name.
+ * @param name Parameter named name.
+ * @param buffer Parameter named buffer.
+ * @param capacity Parameter named capacity.
+ * @param position Parameter named position.
+ * @return Function result.
+ */
 static int write_name(const char *name, uint8_t *buffer, size_t capacity, size_t *position)
 {
     size_t start = *position;
@@ -50,6 +73,16 @@ static int write_name(const char *name, uint8_t *buffer, size_t capacity, size_t
     return 1;
 }
 
+/**
+ * @brief begin_record.
+ * @param buffer Parameter named buffer.
+ * @param capacity Parameter named capacity.
+ * @param position Parameter named position.
+ * @param type Parameter named type.
+ * @param record_class Parameter named record_class.
+ * @param ttl Parameter named ttl.
+ * @return Function result.
+ */
 static uint8_t *begin_record(uint8_t *buffer,
                              size_t capacity,
                              size_t *position,
@@ -69,6 +102,14 @@ static uint8_t *begin_record(uint8_t *buffer,
     return record;
 }
 
+/**
+ * @brief build_packet.
+ * @param instance Parameter named instance.
+ * @param buffer Parameter named buffer.
+ * @param capacity Parameter named capacity.
+ * @param ttl Parameter named ttl.
+ * @return Function result.
+ */
 static size_t build_packet(const mdns_instance_t *instance,
                            uint8_t *buffer,
                            size_t capacity,
@@ -149,6 +190,15 @@ static size_t build_packet(const mdns_instance_t *instance,
     return position;
 }
 
+/**
+ * @brief decode_name.
+ * @param data Parameter named data.
+ * @param length Parameter named length.
+ * @param offset Parameter named offset.
+ * @param name Parameter named name.
+ * @param capacity Parameter named capacity.
+ * @return Function result.
+ */
 static size_t decode_name(
     const uint8_t *data, size_t length, size_t offset, char *name, size_t capacity)
 {
@@ -189,6 +239,12 @@ static size_t decode_name(
     return 0;
 }
 
+/**
+ * @brief name_matches.
+ * @param config Parameter named config.
+ * @param name Parameter named name.
+ * @return Function result.
+ */
 static int name_matches(const mdns_config_t *config, const char *name)
 {
     char full_name[256];
@@ -201,6 +257,13 @@ static int name_matches(const mdns_config_t *config, const char *name)
            net_ascii_casecmp(name, config->hostname) == 0;
 }
 
+/**
+ * @brief send_response.
+ * @param instance Parameter named instance.
+ * @param destination Parameter named destination.
+ * @param ttl Parameter named ttl.
+ * @return Function result.
+ */
 static mdns_error_t send_response(mdns_instance_t *instance,
                                   const net_addr_t *destination,
                                   uint32_t ttl)

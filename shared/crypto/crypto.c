@@ -110,7 +110,7 @@ int crypto_aes_init(crypto_aes_context_t *ctx, const uint8_t *aes_key, const uin
     memcpy(ctx->iv, aes_iv, 16);
     memcpy(ctx->state, aes_iv, 16);
 
-    LOG_INFO("crypto", "AES-128-CBC initialized\n");
+    LOG_INFO( "AES-128-CBC initialized\n");
     return 0;
 }
 

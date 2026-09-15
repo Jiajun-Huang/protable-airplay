@@ -1,3 +1,8 @@
+
+
+
+
+
 #ifndef RTSP_SERVER_H
 #define RTSP_SERVER_H
 
@@ -104,17 +109,56 @@ typedef struct rtsp_instance
 
 /* The caller owns the instance and the thread calling poll. Create before
  * starting threads; close after polling and all state readers have stopped. */
+/**
+ * @brief rtsp_server_create.
+ * @param instance Parameter named instance.
+ * @param port Parameter named port.
+ * @return Function result.
+ */
 int rtsp_server_create(rtsp_instance_t *instance, uint16_t port);
 /* Accept clients and process ready requests once. */
+/**
+ * @brief rtsp_server_poll.
+ * @param instance Parameter named instance.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @return Function result.
+ */
 int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms);
 /* Close clients, event channels, and the RTSP listener. */
+/**
+ * @brief rtsp_server_close.
+ * @param instance Parameter named instance.
+ */
 void rtsp_server_close(rtsp_instance_t *instance);
 /* Set the identity used by challenge responses and AirPlay 2 information. */
+/**
+ * @brief rtsp_set_identity.
+ * @param instance Parameter named instance.
+ * @param local_ip Parameter named local_ip.
+ * @param local_mac_hex Parameter named local_mac_hex.
+ * @return Function result.
+ */
 int rtsp_set_identity(rtsp_instance_t *instance, const char *local_ip, const char *local_mac_hex);
 /* Copy a mutex-protected stream snapshot for the audio service. */
+/**
+ * @brief rtsp_get_stream_state.
+ * @param instance Parameter named instance.
+ * @param out Parameter named out.
+ */
 void rtsp_get_stream_state(rtsp_instance_t *instance, rtsp_stream_state_t *out);
 
 /* Send one plaintext or paired RTSP/HTTP response to a client. */
+/**
+ * @brief rtsp_send_response.
+ * @param client Parameter named client.
+ * @param status Parameter named status.
+ * @param status_text Parameter named status_text.
+ * @param cseq Parameter named cseq.
+ * @param extra_headers Parameter named extra_headers.
+ * @param body Parameter named body.
+ * @param body_len Parameter named body_len.
+ * @return Function result.
+ */
 int rtsp_send_response(rtsp_client_t *client,
                        int status,
                        const char *status_text,

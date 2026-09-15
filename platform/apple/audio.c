@@ -23,6 +23,12 @@ struct audio_device
     int started;
 };
 
+/**
+ * @brief buffer_finished.
+ * @param context Parameter named context.
+ * @param queue Parameter named queue.
+ * @param buffer Parameter named buffer.
+ */
 static void buffer_finished(void *context, AudioQueueRef queue, AudioQueueBufferRef buffer)
 {
     audio_device_t *device = (audio_device_t *)context;

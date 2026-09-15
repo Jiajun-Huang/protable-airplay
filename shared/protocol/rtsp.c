@@ -7,6 +7,11 @@
 #include <stdio.h>
 #include <string.h>
 
+/**
+ * @brief parse_method.
+ * @param method Parameter named method.
+ * @return Function result.
+ */
 static rtsp_method_t parse_method(const char *method)
 {
     static const struct
@@ -37,6 +42,11 @@ static rtsp_method_t parse_method(const char *method)
     return RTSP_METHOD_UNKNOWN;
 }
 
+/**
+ * @brief trim.
+ * @param value Parameter named value.
+ * @return Function result.
+ */
 static char *trim(char *value)
 {
     char *end;
@@ -49,6 +59,12 @@ static char *trim(char *value)
     return value;
 }
 
+/**
+ * @brief parse_uint32.
+ * @param text Parameter named text.
+ * @param out Parameter named out.
+ * @return Function result.
+ */
 static int parse_uint32(const char *text, uint32_t *out)
 {
     uint32_t value = 0;
@@ -66,6 +82,14 @@ static int parse_uint32(const char *text, uint32_t *out)
 }
 
 /* A TCP receive may contain part of a request or several complete requests. */
+/**
+ * @brief parse_request.
+ * @param buffer Parameter named buffer.
+ * @param length Parameter named length.
+ * @param request Parameter named request.
+ * @param consumed Parameter named consumed.
+ * @return Function result.
+ */
 static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request, size_t *consumed)
 {
     size_t headers_end = 0, pos = 0, i;
@@ -156,6 +180,13 @@ static int parse_request(uint8_t *buffer, size_t length, rtsp_request_t *request
     return 1;
 }
 
+/**
+ * @brief send_client.
+ * @param client Parameter named client.
+ * @param data Parameter named data.
+ * @param size Parameter named size.
+ * @return Function result.
+ */
 static int send_client(rtsp_client_t *client, const uint8_t *data, size_t size)
 {
     if (!client->encrypted)
@@ -173,6 +204,13 @@ static int send_client(rtsp_client_t *client, const uint8_t *data, size_t size)
     return 0;
 }
 
+/**
+ * @brief receive_client.
+ * @param client Parameter named client.
+ * @param out Parameter named out.
+ * @param capacity Parameter named capacity.
+ * @return Function result.
+ */
 static int receive_client(rtsp_client_t *client, uint8_t *out, size_t capacity)
 {
     if (!client->encrypted)
@@ -184,7 +222,7 @@ static int receive_client(rtsp_client_t *client, uint8_t *out, size_t capacity)
         if (!length || length > PAIR_RECORD_MAX || length > capacity)
         {
             LOG_WARN(
-                "rtsp", "Invalid encrypted record length=%zu capacity=%zu\n", length, capacity);
+                 "Invalid encrypted record length=%zu capacity=%zu\n", length, capacity);
             return NET_ERROR;
         }
         need = length + 18;
@@ -198,7 +236,7 @@ static int receive_client(rtsp_client_t *client, uint8_t *out, size_t capacity)
         return NET_TIMEOUT;
     int plain = pairing_open(&client->pairing, client->record, need, out);
     if (plain < 0)
-        LOG_WARN("rtsp",
+        LOG_WARN(
                  "Control record authentication failed: counter=%llu\n",
                  (unsigned long long)client->pairing.read_counter);
     client->record_used = 0;
@@ -248,12 +286,19 @@ int rtsp_send_response(rtsp_client_t *client,
     return 0;
 }
 
+/**
+ * @brief handle_request.
+ * @param instance Parameter named instance.
+ * @param client Parameter named client.
+ * @param request Parameter named request.
+ * @return Function result.
+ */
 static int handle_request(rtsp_instance_t *instance,
                           rtsp_client_t *client,
                           const rtsp_request_t *request)
 {
     client->http = strcmp(request->version, "HTTP/1.1") == 0;
-    LOG_DEBUG("rtsp",
+    LOG_DEBUG(
               "%s peer=%s cseq=%u method=%d uri=%.160s body=%zu\n",
               request->version,
               client->peer.ip,
@@ -316,15 +361,20 @@ static int handle_request(rtsp_instance_t *instance,
     default:
         break;
     }
-    LOG_WARN("rtsp", "Unsupported method=%d uri=%.160s\n", request->method, request->uri);
+    LOG_WARN( "Unsupported method=%d uri=%.160s\n", request->method, request->uri);
     return rtsp_send_response(client, 501, "Not Implemented", request->cseq, NULL, NULL, 0);
 }
 
+/**
+ * @brief close_client.
+ * @param instance Parameter named instance.
+ * @param index Parameter named index.
+ */
 static void close_client(rtsp_instance_t *instance, size_t index)
 {
     rtsp_client_t *client = &instance->clients[index];
     if (client->socket.handle != UINTPTR_MAX)
-        LOG_DEBUG("rtsp",
+        LOG_DEBUG(
                   "Closing %s encrypted=%d buffered=%zu record=%zu\n",
                   client->peer.ip,
                   client->encrypted,
@@ -475,7 +525,7 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
             if (parsed < 0)
             {
                 LOG_WARN(
-                    "rtsp", "Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
+                     "Invalid request from %s (buffered=%zu)\n", client->peer.ip, *length);
                 rtsp_send_response(client, 400, "Bad Request", 0, NULL, NULL, 0);
                 close_client(instance, i);
                 break;
@@ -491,7 +541,7 @@ int rtsp_server_poll(rtsp_instance_t *instance, int timeout_ms)
             /* No unauthenticated request may cross the final pairing response. */
             if (!was_encrypted && client->encrypted && *length)
             {
-                LOG_WARN("rtsp", "Unexpected data before the encrypted session boundary\n");
+                LOG_WARN( "Unexpected data before the encrypted session boundary\n");
                 close_client(instance, i);
                 break;
             }

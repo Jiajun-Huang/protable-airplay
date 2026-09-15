@@ -27,6 +27,10 @@ typedef struct
 _Static_assert(sizeof(srp_t) <= PAIRING_SRP_STORAGE_SIZE,
                "PAIRING_SRP_STORAGE_SIZE is too small for SRP state");
 
+/**
+ * @brief free_srp.
+ * @param p Parameter named p.
+ */
 static void free_srp(pairing_t *p)
 {
     srp_t *s = p->srp;
@@ -47,6 +51,16 @@ void pairing_close(pairing_t *p)
 }
 
 /* Concatenate TLV8 fragments, rejecting truncation and duplicate scalar fields. */
+/**
+ * @brief tlv_get.
+ * @param in Parameter named in.
+ * @param size Parameter named size.
+ * @param type Parameter named type.
+ * @param out Parameter named out.
+ * @param capacity Parameter named capacity.
+ * @param length Parameter named length.
+ * @return Function result.
+ */
 static int tlv_get(
     const uint8_t *in, size_t size, uint8_t type, uint8_t *out, size_t capacity, size_t *length)
 {
@@ -76,6 +90,16 @@ static int tlv_get(
     *length = used;
     return found ? 0 : -1;
 }
+/**
+ * @brief tlv_put.
+ * @param out Parameter named out.
+ * @param capacity Parameter named capacity.
+ * @param used Parameter named used.
+ * @param type Parameter named type.
+ * @param data Parameter named data.
+ * @param size Parameter named size.
+ * @return Function result.
+ */
 static int tlv_put(
     uint8_t *out, size_t capacity, size_t *used, uint8_t type, const uint8_t *data, size_t size)
 {
@@ -94,6 +118,14 @@ static int tlv_put(
     } while (size);
     return 0;
 }
+/**
+ * @brief hash_parts.
+ * @param out Parameter named out.
+ * @param parts Parameter named parts.
+ * @param sizes Parameter named sizes.
+ * @param count Parameter named count.
+ * @return Function result.
+ */
 static int hash_parts(uint8_t out[64],
                       const uint8_t *const *parts,
                       const size_t *sizes,
@@ -110,6 +142,11 @@ static int hash_parts(uint8_t out[64],
     return result;
 }
 
+/**
+ * @brief begin.
+ * @param p Parameter named p.
+ * @return Function result.
+ */
 static int begin(pairing_t *p)
 {
     int result = -1;
@@ -171,6 +208,11 @@ done:
     return result;
 }
 
+/**
+ * @brief minimal.
+ * @param data Parameter named data.
+ * @param size Parameter named size.
+ */
 static void minimal(const uint8_t **data, size_t *size)
 {
     while (*size > 1 && **data == 0)
@@ -179,6 +221,15 @@ static void minimal(const uint8_t **data, size_t *size)
         --*size;
     }
 }
+/**
+ * @brief verify.
+ * @param p Parameter named p.
+ * @param a Parameter named a.
+ * @param a_size Parameter named a_size.
+ * @param proof Parameter named proof.
+ * @param answer Parameter named answer.
+ * @return Function result.
+ */
 static int verify(
     pairing_t *p, const uint8_t *a, size_t a_size, const uint8_t proof[64], uint8_t answer[64])
 {
@@ -312,6 +363,11 @@ int pairing_setup(
     return 0;
 }
 
+/**
+ * @brief nonce_bytes.
+ * @param nonce Parameter named nonce.
+ * @param counter Parameter named counter.
+ */
 static void nonce_bytes(uint8_t nonce[12], uint64_t counter)
 {
     memset(nonce, 0, 12);

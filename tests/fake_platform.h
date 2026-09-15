@@ -6,6 +6,10 @@
 /* Deterministic platform double shared by service and lifecycle tests. */
 
 /* Clear captured calls and optionally fail the requested platform operation. */
+/**
+ * @brief fake_reset.
+ * @param fail_step Parameter named fail_step.
+ */
 void fake_reset(int fail_step);
 
 /* Captured resource counts, call counts, and injected I/O status. */

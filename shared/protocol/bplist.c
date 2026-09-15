@@ -1,6 +1,12 @@
 #include "protocol/bplist.h"
 #include <string.h>
 
+/**
+ * @brief read_be.
+ * @param p Parameter named p.
+ * @param n Parameter named n.
+ * @return Function result.
+ */
 static uint64_t read_be(const uint8_t *p, unsigned n)
 {
     uint64_t v = 0;
@@ -30,6 +36,15 @@ int bplist_open(bplist_t *p, const uint8_t *data, size_t size)
     return 0;
 }
 
+/**
+ * @brief object.
+ * @param p Parameter named p.
+ * @param ref Parameter named ref.
+ * @param type Parameter named type.
+ * @param start Parameter named start.
+ * @param count Parameter named count.
+ * @return Function result.
+ */
 static int object(const bplist_t *p, uint32_t ref, unsigned *type, size_t *start, size_t *count)
 {
     if (!p || ref >= p->count)
@@ -67,6 +82,12 @@ static int object(const bplist_t *p, uint32_t ref, unsigned *type, size_t *start
     return 0;
 }
 
+/**
+ * @brief reference.
+ * @param p Parameter named p.
+ * @param pos Parameter named pos.
+ * @return Function result.
+ */
 static uint32_t reference(const bplist_t *p, size_t pos)
 {
     uint64_t ref = read_be(p->data + pos, p->ref_size);
@@ -157,6 +178,12 @@ int bplist_bytes(const bplist_t *p, uint32_t ref, const uint8_t **data, size_t *
     return 0;
 }
 
+/**
+ * @brief append.
+ * @param w Parameter named w.
+ * @param v Parameter named v.
+ * @param bytes Parameter named bytes.
+ */
 static void append(bplist_writer_t *w, uint64_t v, unsigned bytes)
 {
     if (w->failed || bytes > w->capacity - w->used)
@@ -182,6 +209,13 @@ void bplist_writer_init(bplist_writer_t *w, uint8_t *data, size_t capacity)
     w->used = 8;
 }
 
+/**
+ * @brief start.
+ * @param w Parameter named w.
+ * @param type Parameter named type.
+ * @param n Parameter named n.
+ * @return Function result.
+ */
 static uint32_t start(bplist_writer_t *w, unsigned type, size_t n)
 {
     if (w->failed || w->count == 128 || w->used > UINT32_MAX)
@@ -200,6 +234,14 @@ static uint32_t start(bplist_writer_t *w, unsigned type, size_t n)
     return ref;
 }
 
+/**
+ * @brief bytes.
+ * @param w Parameter named w.
+ * @param type Parameter named type.
+ * @param data Parameter named data.
+ * @param n Parameter named n.
+ * @return Function result.
+ */
 static uint32_t bytes(bplist_writer_t *w, unsigned type, const uint8_t *data, size_t n)
 {
     uint32_t ref = start(w, type, n);

@@ -11,24 +11,43 @@
 
 static volatile sig_atomic_t interrupted;
 
+/**
+ * @brief handle_signal.
+ * @param signal_number Parameter named signal_number.
+ */
 static void handle_signal(int signal_number)
 {
     (void)signal_number;
     interrupted = 1;
 }
 
+/**
+ * @brief mdns_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static void *mdns_thread(void *server)
 {
     airplay_mdns_main(server);
     return NULL;
 }
 
+/**
+ * @brief rtsp_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static void *rtsp_thread(void *server)
 {
     airplay_rtsp_main(server);
     return NULL;
 }
 
+/**
+ * @brief audio_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static void *audio_thread(void *server)
 {
     airplay_audio_main(server);
@@ -49,7 +68,7 @@ int main(int argc, char **argv)
     if ((argc != 3 && argc != 4) || strlen(argv[1]) >= sizeof(config.local_ip) ||
         strlen(argv[2]) != 12 || (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
     {
-        LOG_ERROR("main", "Usage: %s IPv4 MAC_HEX [NAME]\n", argv[0]);
+        LOG_ERROR( "Usage: %s IPv4 MAC_HEX [NAME]\n", argv[0]);
         return 1;
     }
     strcpy(config.local_ip, argv[1]);
@@ -59,21 +78,21 @@ int main(int argc, char **argv)
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGINT, &action, NULL) != 0 || sigaction(SIGTERM, &action, NULL) != 0)
     {
-        LOG_ERROR("main", "Cannot register stop handlers.\n");
+        LOG_ERROR( "Cannot register stop handlers.\n");
         return 1;
     }
     if (net_init() != 0)
     {
-        LOG_ERROR("main", "Cannot initialize networking.\n");
+        LOG_ERROR( "Cannot initialize networking.\n");
         return 1;
     }
     if (airplay_server_init(&server, &config) != 0)
     {
-        LOG_ERROR("main", "Cannot initialize AirPlay server.\n");
+        LOG_ERROR( "Cannot initialize AirPlay server.\n");
         net_deinit();
         return 1;
     }
-    LOG_INFO("main",
+    LOG_INFO(
              "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
              config.device_name,
              config.local_ip,
@@ -82,7 +101,7 @@ int main(int argc, char **argv)
     {
         if (pthread_create(&threads[started], NULL, entries[started], &server) != 0)
         {
-            LOG_ERROR("main", "Cannot start service thread.\n");
+            LOG_ERROR( "Cannot start service thread.\n");
             break;
         }
     }

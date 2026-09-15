@@ -60,6 +60,15 @@ struct
 } se_struct_24;
 #define SignExtend24(val) (se_struct_24.x = val)
 
+/**
+ * @brief set_output_size_checked.
+ * @param alac Parameter named alac.
+ * @param outputsamples Parameter named outputsamples.
+ * @param outbuffer_allocation_size Parameter named outbuffer_allocation_size.
+ * @param outputsize Parameter named outputsize.
+ * @param errtag Parameter named errtag.
+ * @return Function result.
+ */
 static int set_output_size_checked(alac_file *alac,
                                    int32_t outputsamples,
                                    int outbuffer_allocation_size,
@@ -71,7 +80,7 @@ static int set_output_size_checked(alac_file *alac,
 
     if (outputsamples <= 0 || outputsamples > (int32_t)alac->setinfo_max_samples_per_frame)
     {
-        LOG_ERROR("alac",
+        LOG_ERROR(
                   "Invalid output sample count %d (max %u) - %s.\n",
                   outputsamples,
                   alac->setinfo_max_samples_per_frame,
@@ -83,7 +92,7 @@ static int set_output_size_checked(alac_file *alac,
     int64_t required = (int64_t)outputsamples * (int64_t)alac->bytespersample;
     if (required <= 0 || required > INT_MAX || required > outbuffer_allocation_size)
     {
-        LOG_ERROR("alac", "Not enough space if the output buffer for audio frame - %s.\n", errtag);
+        LOG_ERROR( "Not enough space if the output buffer for audio frame - %s.\n", errtag);
         *outputsize = 0;
         return -1;
     }
@@ -174,7 +183,7 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
 
     if (alac->setinfo_max_samples_per_frame > ALAC_MAX_SAMPLES_PER_FRAME)
     {
-        LOG_WARN("alac",
+        LOG_WARN(
                  "Clamping max_samples_per_frame %u to %u for static buffers.\n",
                  alac->setinfo_max_samples_per_frame,
                  ALAC_MAX_SAMPLES_PER_FRAME);
@@ -187,6 +196,12 @@ void alac_set_info(alac_file *alac, char *inputbuffer)
 /* stream reading */
 
 /* supports reading 1 to 16 bits, in big endian format */
+/**
+ * @brief readbits_16.
+ * @param alac Parameter named alac.
+ * @param bits Parameter named bits.
+ * @return Function result.
+ */
 static uint32_t readbits_16(alac_file *alac, int bits)
 {
     uint32_t value = 0;
@@ -214,6 +229,12 @@ static uint32_t readbits_16(alac_file *alac, int bits)
     return value;
 }
 
+/**
+ * @brief readbits.
+ * @param alac Parameter named alac.
+ * @param bits Parameter named bits.
+ * @return Function result.
+ */
 static uint32_t readbits(alac_file *alac, int bits)
 {
     if (bits < 0 || bits > 32)
@@ -230,11 +251,21 @@ static uint32_t readbits(alac_file *alac, int bits)
     return high | readbits_16(alac, bits);
 }
 
+/**
+ * @brief readbit.
+ * @param alac Parameter named alac.
+ * @return Function result.
+ */
 static int readbit(alac_file *alac)
 {
     return (int)readbits_16(alac, 1);
 }
 
+/**
+ * @brief unreadbits.
+ * @param alac Parameter named alac.
+ * @param bits Parameter named bits.
+ */
 static void unreadbits(alac_file *alac, int bits)
 {
     size_t offset =
@@ -278,6 +309,11 @@ static int count_leading_zeros(int input)
     return input ? __builtin_clz((unsigned)input) : 32;
 }
 #elif defined(_MSC_VER) && defined(_M_IX86)
+/**
+ * @brief count_leading_zeros.
+ * @param input Parameter named input.
+ * @return Function result.
+ */
 static int count_leading_zeros(int input)
 {
     int output = 0;
@@ -295,6 +331,11 @@ static int count_leading_zeros(int input)
 }
 #else
 #warning using generic count leading zeroes. You may wish to write one for your CPU / compiler
+/**
+ * @brief count_leading_zeros.
+ * @param input Parameter named input.
+ * @return Function result.
+ */
 static int count_leading_zeros(int input)
 {
     int output = 0;
@@ -346,6 +387,14 @@ found:
 
 #define RICE_THRESHOLD 8 // maximum number of bits for a rice prefix.
 
+/**
+ * @brief entropy_decode_value.
+ * @param alac Parameter named alac.
+ * @param readSampleSize Parameter named readSampleSize.
+ * @param k Parameter named k.
+ * @param rice_kmodifier_mask Parameter named rice_kmodifier_mask.
+ * @return Function result.
+ */
 static int32_t entropy_decode_value(alac_file *alac,
                                     int readSampleSize,
                                     int k,
@@ -390,6 +439,17 @@ static int32_t entropy_decode_value(alac_file *alac,
     return x;
 }
 
+/**
+ * @brief entropy_rice_decode.
+ * @param alac Parameter named alac.
+ * @param outputBuffer Parameter named outputBuffer.
+ * @param outputSize Parameter named outputSize.
+ * @param readSampleSize Parameter named readSampleSize.
+ * @param rice_initialhistory Parameter named rice_initialhistory.
+ * @param rice_kmodifier Parameter named rice_kmodifier.
+ * @param rice_historymult Parameter named rice_historymult.
+ * @param rice_kmodifier_mask Parameter named rice_kmodifier_mask.
+ */
 static void entropy_rice_decode(alac_file *alac,
                                 int32_t *outputBuffer,
                                 int outputSize,
@@ -474,6 +534,16 @@ static void entropy_rice_decode(alac_file *alac,
 
 #define SIGN_ONLY(v) ((v < 0) ? (-1) : ((v > 0) ? (1) : (0)))
 
+/**
+ * @brief predictor_decompress_fir_adapt.
+ * @param error_buffer Parameter named error_buffer.
+ * @param buffer_out Parameter named buffer_out.
+ * @param output_size Parameter named output_size.
+ * @param readsamplesize Parameter named readsamplesize.
+ * @param predictor_coef_table Parameter named predictor_coef_table.
+ * @param predictor_coef_num Parameter named predictor_coef_num.
+ * @param predictor_quantitization Parameter named predictor_quantitization.
+ */
 static void predictor_decompress_fir_adapt(int32_t *error_buffer,
                                            int32_t *buffer_out,
                                            int output_size,
@@ -613,6 +683,16 @@ static void predictor_decompress_fir_adapt(int32_t *error_buffer,
     }
 }
 
+/**
+ * @brief deinterlace_16.
+ * @param buffer_a Parameter named buffer_a.
+ * @param buffer_b Parameter named buffer_b.
+ * @param buffer_out Parameter named buffer_out.
+ * @param numchannels Parameter named numchannels.
+ * @param numsamples Parameter named numsamples.
+ * @param interlacing_shift Parameter named interlacing_shift.
+ * @param interlacing_leftweight Parameter named interlacing_leftweight.
+ */
 static void deinterlace_16(int32_t *buffer_a,
                            int32_t *buffer_b,
                            int16_t *buffer_out,
@@ -674,6 +754,19 @@ static void deinterlace_16(int32_t *buffer_a,
     }
 }
 
+/**
+ * @brief deinterlace_24.
+ * @param buffer_a Parameter named buffer_a.
+ * @param buffer_b Parameter named buffer_b.
+ * @param uncompressed_bytes Parameter named uncompressed_bytes.
+ * @param uncompressed_bytes_buffer_a Parameter named uncompressed_bytes_buffer_a.
+ * @param uncompressed_bytes_buffer_b Parameter named uncompressed_bytes_buffer_b.
+ * @param buffer_out Parameter named buffer_out.
+ * @param numchannels Parameter named numchannels.
+ * @param numsamples Parameter named numsamples.
+ * @param interlacing_shift Parameter named interlacing_shift.
+ * @param interlacing_leftweight Parameter named interlacing_leftweight.
+ */
 static void deinterlace_24(int32_t *buffer_a,
                            int32_t *buffer_b,
                            int uncompressed_bytes,
@@ -754,6 +847,13 @@ static void deinterlace_24(int32_t *buffer_a,
     }
 }
 
+/**
+ * @brief decode_frame.
+ * @param alac Parameter named alac.
+ * @param inbuffer Parameter named inbuffer.
+ * @param outbuffer Parameter named outbuffer.
+ * @param outputsize Parameter named outputsize.
+ */
 static void decode_frame(alac_file *alac,
                          const unsigned char *inbuffer,
                          void *outbuffer,
@@ -882,7 +982,7 @@ static void decode_frame(alac_file *alac,
             }
             else
             {
-                LOG_WARN("alac",
+                LOG_WARN(
                          "Unhandled prediction type for compressed case: %i (fallback to adaptive "
                          "FIR)\n",
                          prediction_type);
@@ -972,7 +1072,7 @@ static void decode_frame(alac_file *alac,
         }
         case 20:
         case 32:
-            LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
+            LOG_WARN( "Unimplemented sample size %i\n", alac->setinfo_sample_size);
             break;
         default:
             break;
@@ -1116,7 +1216,7 @@ static void decode_frame(alac_file *alac,
             }
             else
             { /* see mono case */
-                LOG_WARN("alac",
+                LOG_WARN(
                          "Unhandled prediction type on channel 1: %i (fallback to adaptive FIR)\n",
                          prediction_type_a);
                 predictor_decompress_fir_adapt(alac->predicterror_buffer_a,
@@ -1150,7 +1250,7 @@ static void decode_frame(alac_file *alac,
             }
             else
             {
-                LOG_WARN("alac",
+                LOG_WARN(
                          "Unhandled prediction type on channel 2: %i (fallback to adaptive FIR)\n",
                          prediction_type_b);
                 predictor_decompress_fir_adapt(alac->predicterror_buffer_b,
@@ -1236,7 +1336,7 @@ static void decode_frame(alac_file *alac,
         }
         case 20:
         case 32:
-            LOG_WARN("alac", "Unimplemented sample size %i\n", alac->setinfo_sample_size);
+            LOG_WARN( "Unimplemented sample size %i\n", alac->setinfo_sample_size);
             break;
         default:
             break;
@@ -1284,6 +1384,6 @@ alac_file *alac_create(int samplesize, int numchannels)
         }
     }
 
-    LOG_ERROR("alac", "No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
+    LOG_ERROR( "No free static decoder contexts (max=%d).\n", ALAC_MAX_CONTEXTS);
     return NULL;
 }

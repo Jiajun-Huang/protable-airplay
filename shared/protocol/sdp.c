@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief to_lower_ascii.
+ * @param s Parameter named s.
+ */
 static void to_lower_ascii(char *s)
 {
     if (!s)
@@ -20,6 +24,13 @@ static void to_lower_ascii(char *s)
 static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/**
+ * @brief parse_hex_bytes.
+ * @param text Parameter named text.
+ * @param output Parameter named output.
+ * @param capacity Parameter named capacity.
+ * @return Function result.
+ */
 static int parse_hex_bytes(const char *text, uint8_t *output, size_t capacity)
 {
     size_t length = 0;
@@ -88,6 +99,11 @@ int sdp_base64_decode(const char *input, uint8_t *output, size_t output_size)
     return (int)output_len;
 }
 
+/**
+ * @brief sdp_get_line_value.
+ * @param line Parameter named line.
+ * @return Function result.
+ */
 static const char *sdp_get_line_value(const char *line)
 {
     const char *eq = strchr(line, '=');
@@ -197,7 +213,7 @@ int sdp_parse(const uint8_t *sdp_data,
                     }
                     else
                     {
-                        LOG_WARN("sdp", "Unknown rtpmap codec '%s'\n", codec_name);
+                        LOG_WARN( "Unknown rtpmap codec '%s'\n", codec_name);
                     }
                 }
             }
@@ -298,7 +314,7 @@ int sdp_parse(const uint8_t *sdp_data,
         if (session->alac_fmtp_count >= 11 && session->sample_rate == 0)
             session->sample_rate = session->alac_fmtp[10];
 
-        LOG_DEBUG("sdp", "Inferred ALAC codec from fmtp (%zu params)\n", session->alac_fmtp_count);
+        LOG_DEBUG( "Inferred ALAC codec from fmtp (%zu params)\n", session->alac_fmtp_count);
     }
 
     // Sanitize ALAC/PCM essentials to known-good ranges used by AirPlay senders.
@@ -311,7 +327,7 @@ int sdp_parse(const uint8_t *sdp_data,
     if (session->bits_per_sample != 16 && session->bits_per_sample != 24)
         session->bits_per_sample = AIRPLAY_DEFAULT_BITS_PER_SAMPLE;
 
-    LOG_DEBUG("sdp",
+    LOG_DEBUG(
               "Parsed session: codec=%d, rate=%u, channels=%u, bits=%u, frames=%u\n",
               session->codec,
               session->sample_rate,

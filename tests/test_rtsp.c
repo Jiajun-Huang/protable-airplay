@@ -12,7 +12,7 @@
     {                                                                                              \
         if (!(condition))                                                                          \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #condition);                      \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #condition);                      \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -42,6 +42,11 @@ static int mutex_storage;
 static int wait_error;
 static int last_wait_timeout;
 
+/**
+ * @brief fake_client.
+ * @param socket Parameter named socket.
+ * @return Function result.
+ */
 static fake_client_t *fake_client(net_socket_t *socket)
 {
     CHECK(socket->handle >= 1 && socket->handle <= FAKE_CLIENTS);
@@ -180,6 +185,9 @@ void net_close(net_socket_t *socket)
     *socket = (net_socket_t)NET_SOCKET_INIT;
 }
 
+/**
+ * @brief fixture.
+ */
 static void fixture(void)
 {
     memset(clients, 0, sizeof(clients));
@@ -190,6 +198,10 @@ static void fixture(void)
     CHECK(rtsp_set_identity(&server, "192.0.2.10", "001122AABBCC") == 0);
 }
 
+/**
+ * @brief connect_client.
+ * @return Function result.
+ */
 static int connect_client(void)
 {
     int index = client_count++;
@@ -200,6 +212,12 @@ static int connect_client(void)
     return index;
 }
 
+/**
+ * @brief append.
+ * @param client Parameter named client.
+ * @param data Parameter named data.
+ * @param length Parameter named length.
+ */
 static void append(int client, const void *data, size_t length)
 {
     fake_client_t *target = &clients[client];
@@ -208,11 +226,26 @@ static void append(int client, const void *data, size_t length)
     target->input_length += length;
 }
 
+/**
+ * @brief append_text.
+ * @param client Parameter named client.
+ * @param text Parameter named text.
+ */
 static void append_text(int client, const char *text)
 {
     append(client, text, strlen(text));
 }
 
+/**
+ * @brief queue_uri_request.
+ * @param client Parameter named client.
+ * @param method Parameter named method.
+ * @param uri Parameter named uri.
+ * @param cseq Parameter named cseq.
+ * @param headers Parameter named headers.
+ * @param body Parameter named body.
+ * @param body_length Parameter named body_length.
+ */
 static void queue_uri_request(int client,
                               const char *method,
                               const char *uri,
@@ -236,6 +269,15 @@ static void queue_uri_request(int client,
         append(client, body, body_length);
 }
 
+/**
+ * @brief queue_request.
+ * @param client Parameter named client.
+ * @param method Parameter named method.
+ * @param cseq Parameter named cseq.
+ * @param headers Parameter named headers.
+ * @param body Parameter named body.
+ * @param body_length Parameter named body_length.
+ */
 static void queue_request(int client,
                           const char *method,
                           unsigned cseq,
@@ -246,12 +288,22 @@ static void queue_request(int client,
     queue_uri_request(client, method, "*", cseq, headers, body, body_length);
 }
 
+/**
+ * @brief request.
+ * @param client Parameter named client.
+ * @param method Parameter named method.
+ * @param cseq Parameter named cseq.
+ */
 static void request(int client, const char *method, unsigned cseq)
 {
     queue_request(client, method, cseq, NULL, NULL, 0);
     CHECK(rtsp_server_poll(&server, 0) == 0);
 }
 
+/**
+ * @brief state.
+ * @return Function result.
+ */
 static rtsp_stream_state_t state(void)
 {
     rtsp_stream_state_t result;
@@ -259,6 +311,10 @@ static rtsp_stream_state_t state(void)
     return result;
 }
 
+/**
+ * @brief announce.
+ * @param client Parameter named client.
+ */
 static void announce(int client)
 {
     const char *sdp = "v=0\r\nm=audio 0 RTP/AVP 96\r\na=rtpmap:96 L16/44100/2\r\n";
@@ -267,6 +323,12 @@ static void announce(int client)
     CHECK(state().has_session);
 }
 
+/**
+ * @brief occurrences.
+ * @param text Parameter named text.
+ * @param needle Parameter named needle.
+ * @return Function result.
+ */
 static int occurrences(const char *text, const char *needle)
 {
     int count = 0;
@@ -278,6 +340,9 @@ static int occurrences(const char *text, const char *needle)
     return count;
 }
 
+/**
+ * @brief test_fragmented_headers_and_pipeline.
+ */
 static void test_fragmented_headers_and_pipeline(void)
 {
     fixture();
@@ -296,6 +361,9 @@ static void test_fragmented_headers_and_pipeline(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_fragmented_body_then_record.
+ */
 static void test_fragmented_body_then_record(void)
 {
     const char *sdp = "v=0\r\nm=audio 0 RTP/AVP 96\r\na=rtpmap:96 L16/44100/2\r\n";
@@ -324,6 +392,9 @@ static void test_fragmented_body_then_record(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_session_owner_and_controls.
+ */
 static void test_session_owner_and_controls(void)
 {
     fixture();
@@ -363,6 +434,9 @@ static void test_session_owner_and_controls(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_new_announce_changes_owner.
+ */
 static void test_new_announce_changes_owner(void)
 {
     fixture();
@@ -384,6 +458,9 @@ static void test_new_announce_changes_owner(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_missing_and_invalid_sdp.
+ */
 static void test_missing_and_invalid_sdp(void)
 {
     fixture();
@@ -399,6 +476,9 @@ static void test_missing_and_invalid_sdp(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_timeout_and_failures.
+ */
 static void test_timeout_and_failures(void)
 {
     fixture();
@@ -434,6 +514,9 @@ static void test_timeout_and_failures(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_malformed_lengths_and_headers.
+ */
 static void test_malformed_lengths_and_headers(void)
 {
     const char *bad[] = {"-1", "+1", "4294967296", "abc", "12junk", ""};
@@ -480,6 +563,9 @@ static void test_malformed_lengths_and_headers(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_volume_and_large_artwork.
+ */
 static void test_volume_and_large_artwork(void)
 {
     fixture();
@@ -520,6 +606,9 @@ static void test_volume_and_large_artwork(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_identity_and_client_limit.
+ */
 static void test_identity_and_client_limit(void)
 {
     fixture();
@@ -537,6 +626,9 @@ static void test_identity_and_client_limit(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_transport_and_timestamp_boundaries.
+ */
 static void test_transport_and_timestamp_boundaries(void)
 {
     fixture();
@@ -571,6 +663,9 @@ static void test_transport_and_timestamp_boundaries(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_fairplay_dispatch_and_reconnect.
+ */
 static void test_fairplay_dispatch_and_reconnect(void)
 {
     fixture();
@@ -597,6 +692,9 @@ static void test_fairplay_dispatch_and_reconnect(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_method_router.
+ */
 static void test_method_router(void)
 {
     fixture();
@@ -640,6 +738,9 @@ static void test_method_router(void)
     rtsp_server_close(&server);
 }
 
+/**
+ * @brief test_buffered_flush_timebase.
+ */
 static void test_buffered_flush_timebase(void)
 {
     fixture();
@@ -686,6 +787,6 @@ int main(void)
     test_fairplay_dispatch_and_reconnect();
     test_method_router();
     test_buffered_flush_timebase();
-    LOG_INFO("test", "RTSP framing, state, ownership, and failure tests passed\n");
+    LOG_INFO( "RTSP framing, state, ownership, and failure tests passed\n");
     return 0;
 }

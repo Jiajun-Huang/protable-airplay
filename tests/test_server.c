@@ -8,7 +8,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -70,6 +70,6 @@ int main(void)
     airplay_server_deinit(&server);
     CHECK(fake_resources == 0 && fake_mutexes == 0);
     LOG_INFO(
-        "test", "Service lifecycle and PCM checks passed; context bytes=%zu\n", sizeof(server));
+         "Service lifecycle and PCM checks passed; context bytes=%zu\n", sizeof(server));
     return 0;
 }

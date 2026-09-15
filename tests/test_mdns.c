@@ -9,7 +9,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -27,10 +27,20 @@ int net_udp_send(net_socket_t *s, const void *data, size_t n, const net_addr_t *
     ++sends;
     return (int)n;
 }
+/**
+ * @brief u16.
+ * @param p Parameter named p.
+ * @return Function result.
+ */
 static unsigned u16(const uint8_t *p)
 {
     return (unsigned)p[0] * 256 + p[1];
 }
+/**
+ * @brief skip_name.
+ * @param p Parameter named p.
+ * @return Function result.
+ */
 static size_t skip_name(size_t p)
 {
     while (p < sent_length && sent[p])
@@ -41,6 +51,10 @@ static size_t skip_name(size_t p)
     CHECK(p < sent_length);
     return p + 1;
 }
+/**
+ * @brief check_records.
+ * @param ttl Parameter named ttl.
+ */
 static void check_records(unsigned ttl)
 {
     CHECK(u16(sent + 2) == 0x8400 && u16(sent + 6) == 4);
@@ -100,6 +114,6 @@ int main(void)
     uint8_t loop[] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xc0, 12, 0, 12, 0, 1};
     CHECK(mdns_handle_packet(&mdns, loop, sizeof(loop)) == MDNS_ERR_INVALID_DATA);
     CHECK(sends == previous);
-    LOG_INFO("test", "mDNS wire checks passed\n");
+    LOG_INFO( "mDNS wire checks passed\n");
     return 0;
 }

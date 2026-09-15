@@ -12,10 +12,17 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
+/**
+ * @brief check_decode.
+ * @param data Parameter named data.
+ * @param length Parameter named length.
+ * @param expected Parameter named expected.
+ * @param channels Parameter named channels.
+ */
 static void check_decode(const uint8_t *data,
                          size_t length,
                          const int16_t *expected,
@@ -33,7 +40,7 @@ static void check_decode(const uint8_t *data,
     for (size_t i = 0; i < count; ++i)
         if (output[i] != expected[i])
             ++mismatch;
-    LOG_INFO("test",
+    LOG_INFO(
              "ALAC channels=%u bytes=%zu samples=%zu mismatches=%zu\n",
              channels,
              length,
@@ -53,6 +60,9 @@ static void check_decode(const uint8_t *data,
               count == 0);
     alac_decoder_close(&decoder);
 }
+/**
+ * @brief check_encrypted_packet.
+ */
 static void check_encrypted_packet(void)
 {
     /* Each packet starts with the same session IV; an incomplete AES block is plaintext. */

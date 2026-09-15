@@ -1,3 +1,4 @@
+
 #ifndef SDP_H
 #define SDP_H
 
@@ -10,9 +11,6 @@
  * Parses SDP payload from RTSP ANNOUNCE to extract codec parameters and encryption material.
  */
 
-/**
- * @brief Audio codec types
- */
 typedef enum
 {
     SDP_CODEC_UNKNOWN = 0,
@@ -21,9 +19,6 @@ typedef enum
     SDP_CODEC_PCM,  // Linear PCM
 } sdp_codec_t;
 
-/**
- * @brief Parsed SDP session information
- */
 typedef struct
 {
     sdp_codec_t codec;

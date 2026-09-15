@@ -40,6 +40,11 @@ int net_ipv4_to_str(uint32_t address, char *text, size_t capacity)
     return length > 0 && (size_t)length < capacity ? 0 : -1;
 }
 
+/**
+ * @brief ascii_lower.
+ * @param c Parameter named c.
+ * @return Function result.
+ */
 static unsigned char ascii_lower(unsigned char c)
 {
     return c >= 'A' && c <= 'Z' ? (unsigned char)(c + ('a' - 'A')) : c;

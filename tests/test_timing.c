@@ -12,7 +12,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -21,6 +21,11 @@ uint64_t os_time_us(void)
 {
     return now;
 }
+/**
+ * @brief put32.
+ * @param p Parameter named p.
+ * @param n Parameter named n.
+ */
 static void put32(uint8_t *p, uint32_t n)
 {
     p[0] = (uint8_t)(n >> 24);
@@ -28,11 +33,22 @@ static void put32(uint8_t *p, uint32_t n)
     p[2] = (uint8_t)(n >> 8);
     p[3] = (uint8_t)n;
 }
+/**
+ * @brief put_time.
+ * @param p Parameter named p.
+ * @param local_us Parameter named local_us.
+ * @param seconds_offset Parameter named seconds_offset.
+ */
 static void put_time(uint8_t *p, uint64_t local_us, int seconds_offset)
 {
     put32(p, (uint32_t)(local_us / 1000000 + 2208988800ULL + seconds_offset));
     put32(p + 4, (uint32_t)((local_us % 1000000) * UINT64_C(4294967296) / 1000000));
 }
+/**
+ * @brief exchange.
+ * @param sync Parameter named sync.
+ * @param offset_seconds Parameter named offset_seconds.
+ */
 static void exchange(ntp_sync_t *sync, int offset_seconds)
 {
     uint8_t request[32], reply[32] = {0x80, 0xd3, 0, 7};
@@ -46,6 +62,13 @@ static void exchange(ntp_sync_t *sync, int offset_seconds)
     CHECK(sync->rtt_us == 2000 && sync->synchronized);
     CHECK(ntp_sync_process_packet(sync, reply, sizeof(reply)) < 0);
 }
+/**
+ * @brief anchor.
+ * @param sync Parameter named sync.
+ * @param rtp Parameter named rtp.
+ * @param local Parameter named local.
+ * @param offset Parameter named offset.
+ */
 static void anchor(ntp_sync_t *sync, uint32_t rtp, uint64_t local, int offset)
 {
     uint8_t packet[20] = {0x80, 0xd4, 0, 4};
@@ -54,6 +77,9 @@ static void anchor(ntp_sync_t *sync, uint32_t rtp, uint64_t local, int offset)
     put32(packet + 16, rtp + 88200);
     CHECK(ntp_sync_control(sync, packet, sizeof(packet), 44100) == 0);
 }
+/**
+ * @brief test_clock.
+ */
 static void test_clock(void)
 {
     ntp_sync_t sync;
@@ -81,6 +107,9 @@ static void test_clock(void)
     CHECK(ntp_sync_reply(request, 31, reply) < 0);
 }
 static playout_t queue;
+/**
+ * @brief test_queue.
+ */
 static void test_queue(void)
 {
     uint8_t bytes[8] = {0};
@@ -120,6 +149,11 @@ static void test_queue(void)
 }
 
 /* Deterministic transport and output: exercise the real receive callback and polling scheduler. */
+static const uint8_t *tcp_input;
+static size_t tcp_input_size, tcp_input_position;
+static uint8_t udp_input[16];
+static size_t udp_input_size;
+
 int net_udp_bind(net_socket_t *s, uint16_t port)
 {
     s->port = port;
@@ -140,18 +174,26 @@ int net_tcp_listen(net_socket_t *s, const char *ip, uint16_t port)
 int net_tcp_accept(net_socket_t *s, net_socket_t *c, net_addr_t *p, int timeout)
 {
     (void)s;
-    (void)c;
-    (void)p;
     (void)timeout;
-    return NET_TIMEOUT;
+    if (tcp_input_position == tcp_input_size)
+        return NET_TIMEOUT;
+    c->handle = 6003;
+    *p = (net_addr_t){.ip = "192.0.2.20", .port = 50000};
+    return 0;
 }
 int net_tcp_recv(net_socket_t *s, void *data, size_t size, int timeout)
 {
     (void)s;
-    (void)data;
-    (void)size;
     (void)timeout;
-    return NET_TIMEOUT;
+    if (tcp_input_position == tcp_input_size)
+        return NET_TIMEOUT;
+    if (size > 7)
+        size = 7;
+    if (size > tcp_input_size - tcp_input_position)
+        size = tcp_input_size - tcp_input_position;
+    memcpy(data, tcp_input + tcp_input_position, size);
+    tcp_input_position += size;
+    return (int)size;
 }
 int net_udp_join(net_socket_t *s, const char *group, const char *ip)
 {
@@ -165,15 +207,25 @@ int net_wait(const net_socket_t *s, size_t n, uint8_t *ready, int timeout)
     (void)s;
     (void)timeout;
     memset(ready, 0, n);
+    if (udp_input_size && n)
+    {
+        ready[0] = 1;
+        return 1;
+    }
     return 0;
 }
 int net_udp_recv(net_socket_t *s, void *b, size_t n, net_addr_t *p, int t)
 {
-    (void)s;
-    (void)b;
-    (void)n;
-    (void)p;
     (void)t;
+    if (s->port == 6000 && udp_input_size)
+    {
+        CHECK(n >= udp_input_size);
+        size_t size = udp_input_size;
+        memcpy(b, udp_input, size);
+        *p = (net_addr_t){.ip = "192.0.2.20", .port = 50000};
+        udp_input_size = 0;
+        return (int)size;
+    }
     return NET_TIMEOUT;
 }
 int net_udp_send(net_socket_t *s, const void *b, size_t n, const net_addr_t *p)
@@ -186,17 +238,31 @@ int net_udp_send(net_socket_t *s, const void *b, size_t n, const net_addr_t *p)
 static audio_pipeline_t pipeline;
 static unsigned writes;
 static int output_delay;
+/**
+ * @brief output.
+ * @param samples Parameter named samples.
+ * @param count Parameter named count.
+ * @param arg Parameter named arg.
+ */
 static void output(const int16_t *samples, size_t count, void *arg)
 {
     (void)arg;
     CHECK(count == 4 && samples[0] == 1000 && samples[1] == -1000);
     ++writes;
 }
+/**
+ * @brief delay.
+ * @param arg Parameter named arg.
+ * @return Function result.
+ */
 static int delay(void *arg)
 {
     (void)arg;
     return output_delay;
 }
+/**
+ * @brief test_scheduled_output.
+ */
 static void test_scheduled_output(void)
 {
     audio_pipeline_config_t config = {.audio_port = 6000,
@@ -241,6 +307,12 @@ static void test_scheduled_output(void)
     CHECK(pipeline.playout.count == 0);
     audio_pipeline_close(&pipeline);
 }
+/**
+ * @brief alac_output.
+ * @param samples Parameter named samples.
+ * @param count Parameter named count.
+ * @param arg Parameter named arg.
+ */
 static void alac_output(const int16_t *samples, size_t count, void *arg)
 {
     (void)arg;
@@ -249,6 +321,9 @@ static void alac_output(const int16_t *samples, size_t count, void *arg)
     ++writes;
 }
 
+/**
+ * @brief test_airplay2_scheduled_alac.
+ */
 static void test_airplay2_scheduled_alac(void)
 {
     audio_pipeline_config_t config = {.audio_port = 6000,
@@ -331,6 +406,6 @@ int main(void)
     test_queue();
     test_scheduled_output();
     test_airplay2_scheduled_alac();
-    LOG_INFO("test", "Sender timing, RTP ordering, FLUSH and scheduled output passed\n");
+    LOG_INFO( "Sender timing, RTP ordering, FLUSH and scheduled output passed\n");
     return 0;
 }

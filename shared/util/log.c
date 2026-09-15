@@ -5,7 +5,7 @@
 
 log_level_t g_log_level = AIRPLAY_LOG_LEVEL;
 
-void log_message(log_level_t level, const char *tag, const char *format, ...)
+void log_message(log_level_t level, const char *file, int line, const char *format, ...)
 {
     static const char *const names[] = {"DEBUG", "INFO", "WARN", "ERROR"};
     va_list args;
@@ -15,10 +15,7 @@ void log_message(log_level_t level, const char *tag, const char *format, ...)
         return;
 
     output = level >= LOG_LEVEL_WARN ? stderr : stdout;
-    if (tag && tag[0])
-        fprintf(output, "[%s][%s] ", names[level], tag);
-    else
-        fprintf(output, "[%s] ", names[level]);
+    fprintf(output, "[%s][%s:%d] ", names[level], file, line);
     va_start(args, format);
     vfprintf(output, format, args);
     va_end(args);

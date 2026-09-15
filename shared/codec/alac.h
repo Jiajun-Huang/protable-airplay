@@ -1,3 +1,7 @@
+
+
+
+
 /*
  * ALAC (Apple Lossless Audio Codec) decoder
  * Copyright (c) 2005 David Hammerton
@@ -40,18 +44,45 @@
 typedef struct alac_file alac_file;
 
 /* Allocate a decoder for one sample size and channel count. */
+/**
+ * @brief alac_create.
+ * @param samplesize Parameter named samplesize.
+ * @param numchannels Parameter named numchannels.
+ * @return Function result.
+ */
 alac_file *alac_create(int samplesize, int numchannels);
 /* Decode one ALAC frame into the caller's PCM byte buffer. */
+/**
+ * @brief alac_decode_frame.
+ * @param alac Parameter named alac.
+ * @param inbuffer Parameter named inbuffer.
+ * @param inputsize Parameter named inputsize.
+ * @param outbuffer Parameter named outbuffer.
+ * @param outputsize Parameter named outputsize.
+ */
 void alac_decode_frame(alac_file *alac,
                        const unsigned char *inbuffer,
                        size_t inputsize,
                        void *outbuffer,
                        int *outputsize);
 /* Load the ALAC codec configuration cookie into the decoder. */
+/**
+ * @brief alac_set_info.
+ * @param alac Parameter named alac.
+ * @param inputbuffer Parameter named inputbuffer.
+ */
 void alac_set_info(alac_file *alac, char *inputbuffer);
 /* Bind the decoder's working buffers to its embedded fixed storage. */
+/**
+ * @brief alac_allocate_buffers.
+ * @param alac Parameter named alac.
+ */
 void alac_allocate_buffers(alac_file *alac);
 /* Release a decoder returned by alac_create. */
+/**
+ * @brief alac_free.
+ * @param alac Parameter named alac.
+ */
 void alac_free(alac_file *alac);
 
 struct alac_file

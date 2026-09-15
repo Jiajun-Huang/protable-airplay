@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/**
+ * @brief server_fail.
+ * @param server Parameter named server.
+ */
 static void server_fail(airplay_server_t *server)
 {
     os_mutex_lock(&server->control_lock);
@@ -14,6 +18,12 @@ static void server_fail(airplay_server_t *server)
     os_mutex_unlock(&server->control_lock);
 }
 
+/**
+ * @brief output_pcm.
+ * @param samples Parameter named samples.
+ * @param count Parameter named count.
+ * @param arg Parameter named arg.
+ */
 static void output_pcm(const int16_t *samples, size_t count, void *arg)
 {
     airplay_server_t *server = arg;
@@ -22,12 +32,22 @@ static void output_pcm(const int16_t *samples, size_t count, void *arg)
         server_fail(server);
 }
 
+/**
+ * @brief output_delay_frames.
+ * @param arg Parameter named arg.
+ * @return Function result.
+ */
 static int output_delay_frames(void *arg)
 {
     airplay_server_t *server = arg;
     return server->audio ? audio_delay_frames(server->audio) : 0;
 }
 
+/**
+ * @brief valid_config.
+ * @param config Parameter named config.
+ * @return Function result.
+ */
 static int valid_config(const airplay_config_t *config)
 {
     uint32_t address;
@@ -123,6 +143,9 @@ int airplay_server_result(airplay_server_t *server)
     return result;
 }
 
+/* Thread 1: mDNS discovery. Owns the UDP mDNS socket on port 5353 and
+ * advertises the receiver's AirPlay service, whose RTSP endpoint is TCP
+ * port AIRPLAY_RTSP_PORT. It does not handle RTSP control or audio packets. */
 void airplay_mdns_main(void *arg)
 {
     airplay_server_t *server = arg;
@@ -131,6 +154,10 @@ void airplay_mdns_main(void *arg)
             server_fail(server);
 }
 
+/* Thread 2: RTSP control. Owns the TCP listener on AIRPLAY_RTSP_PORT,
+ * accepts sender requests, and updates shared stream state such as the
+ * session, transport, volume, and timestamp controls. It does not decode or
+ * play audio. */
 void airplay_rtsp_main(void *arg)
 {
     airplay_server_t *server = arg;
@@ -139,6 +166,10 @@ void airplay_rtsp_main(void *arg)
             server_fail(server);
 }
 
+/**
+ * @brief close_audio.
+ * @param server Parameter named server.
+ */
 static void close_audio(airplay_server_t *server)
 {
     audio_pipeline_stop(&server->pipeline);
@@ -149,69 +180,102 @@ static void close_audio(airplay_server_t *server)
     }
 }
 
+typedef struct
+{
+    unsigned generation;
+    unsigned flush_generation;
+    unsigned transport_generation;
+    float volume_db;
+} audio_loop_state_t;
+
+static void update_audio_transport(airplay_server_t *server,
+                                   const rtsp_stream_state_t *stream,
+                                   audio_loop_state_t *state)
+{
+    if (state->transport_generation == stream->generation)
+        return;
+
+    net_addr_t peer = stream->has_session ? stream->timing_peer : (net_addr_t){0};
+    audio_pipeline_set_transport(&server->pipeline, &peer);
+    state->transport_generation = stream->generation;
+}
+
+static int start_audio_session(airplay_server_t *server,
+                               const rtsp_stream_state_t *stream,
+                               audio_loop_state_t *state)
+{
+    if (server->audio && state->generation == stream->generation &&
+        state->flush_generation == stream->flush_generation)
+        return 0;
+
+    close_audio(server);
+    if (audio_pipeline_configure(&server->pipeline, &stream->session) != 0 ||
+        audio_open(&server->audio,
+                   stream->session.sample_rate,
+                   (uint8_t)stream->session.channels,
+                   16) != 0 ||
+        audio_pipeline_start(&server->pipeline) != 0)
+        return -1;
+
+    state->generation = stream->generation;
+    state->flush_generation = stream->flush_generation;
+    state->volume_db = stream->volume_db;
+    audio_pipeline_set_volume(&server->pipeline, state->volume_db);
+    if (stream->has_timestamp_floor)
+        audio_pipeline_set_start(
+            &server->pipeline, stream->timestamp_floor, stream->floor_exclusive);
+    if (stream->has_buffered_flush_sequence && stream->session.stream_type == 103)
+        buffered_audio_flush(&server->pipeline.buffered, stream->buffered_flush_sequence);
+    return 0;
+}
+
+static void update_audio_volume(airplay_server_t *server,
+                                const rtsp_stream_state_t *stream,
+                                audio_loop_state_t *state)
+{
+    if (state->volume_db == stream->volume_db)
+        return;
+
+    state->volume_db = stream->volume_db;
+    audio_pipeline_set_volume(&server->pipeline, state->volume_db);
+}
+
+/* Thread 3: audio data path. Reads the RTSP state and owns the audio pipeline
+ * sockets: RTP on AIRPLAY_AUDIO_PORT, RTCP/control on AIRPLAY_CONTROL_PORT,
+ * and NTP timing on AIRPLAY_TIMING_PORT. It decodes audio and writes PCM to
+ * the platform output; it does not accept RTSP control requests. */
 void airplay_audio_main(void *arg)
 {
     airplay_server_t *server = arg;
-    unsigned generation = 0, flush_generation = 0;
-    unsigned transport_generation = 0;
-    float volume_db = 0.0f;
+    audio_loop_state_t state = {0};
     while (!airplay_server_is_stopping(server))
     {
         rtsp_stream_state_t stream;
         rtsp_get_stream_state(&server->rtsp, &stream);
-        if (transport_generation != stream.generation)
+        update_audio_transport(server, &stream, &state); // Update the RTP sender endpoint for buffered audio and RAOP timing exchanges.
+        if (!stream.recording || !stream.has_session) // Stop audio when the sender has stopped streaming or the session is gone.
         {
-            net_addr_t peer = stream.has_session ? stream.timing_peer : (net_addr_t){0};
-            audio_pipeline_set_transport(&server->pipeline, &peer);
-            transport_generation = stream.generation;
-        }
-        if (!stream.recording || !stream.has_session)
-        {
-            if (server->audio)
-                close_audio(server);
+            // If the audio is running, stop it.
+            if (server->audio) 
+                close_audio(server); 
         }
         else
         {
-            if (!server->audio || generation != stream.generation ||
-                flush_generation != stream.flush_generation)
+            if (start_audio_session(server, &stream, &state) != 0)
             {
-                close_audio(server);
-                if (audio_pipeline_configure(&server->pipeline, &stream.session) != 0 ||
-                    audio_open(&server->audio,
-                               stream.session.sample_rate,
-                               (uint8_t)stream.session.channels,
-                               16) != 0 ||
-                    audio_pipeline_start(&server->pipeline) != 0)
-                {
-                    server_fail(server);
-                    break;
-                }
-                generation = stream.generation;
-                flush_generation = stream.flush_generation;
-                volume_db = stream.volume_db;
-                audio_pipeline_set_volume(&server->pipeline, volume_db);
-                if (stream.has_timestamp_floor)
-                    audio_pipeline_set_start(
-                        &server->pipeline, stream.timestamp_floor, stream.floor_exclusive);
-                if (stream.has_buffered_flush_sequence && stream.session.stream_type == 103)
-                    buffered_audio_flush(&server->pipeline.buffered,
-                                         stream.buffered_flush_sequence);
+                server_fail(server);
+                break;
             }
-            if (volume_db != stream.volume_db)
-            {
-                volume_db = stream.volume_db;
-                audio_pipeline_set_volume(&server->pipeline, volume_db);
-            }
+            update_audio_volume(server, &stream, &state);
         }
-        /* Realtime streams obtain their anchors from UDP control packets in
-         * the audio thread; buffered streams use the RTSP control state. */
-        if (stream.session.stream_type != 96)
+       
+        if (stream.session.stream_type != 96) // For buffered audio and RAOP timing, update the PTP anchor if it has changed.
         {
             server->pipeline.anchor = stream.anchor;
             ptp_sync_set_clock(&server->pipeline.ptp, stream.anchor.clock_id);
         }
-        /* Drain all three RTP sockets while idle too, so a later RECORD starts fresh. */
-        if (audio_pipeline_poll(&server->pipeline, 20) != 0)
+
+        if (audio_pipeline_poll(&server->pipeline, 20) != 0) // Poll the audio pipeline for RTP packets, decode audio, and send to output callback.
             server_fail(server);
     }
     close_audio(server);

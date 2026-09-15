@@ -13,6 +13,11 @@
 
 static volatile LONG interrupted;
 
+/**
+ * @brief console_handler.
+ * @param event Parameter named event.
+ * @return Function result.
+ */
 static BOOL WINAPI console_handler(DWORD event)
 {
     if (event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT)
@@ -21,6 +26,11 @@ static BOOL WINAPI console_handler(DWORD event)
     return TRUE;
 }
 
+/**
+ * @brief detect_identity.
+ * @param config Parameter named config.
+ * @return Function result.
+ */
 static int detect_identity(airplay_config_t *config)
 {
     ULONG size = 15000;
@@ -95,18 +105,33 @@ static int detect_identity(airplay_config_t *config)
     return result;
 }
 
+/**
+ * @brief mdns_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static DWORD WINAPI mdns_thread(void *server)
 {
     airplay_mdns_main(server);
     return 0;
 }
 
+/**
+ * @brief rtsp_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static DWORD WINAPI rtsp_thread(void *server)
 {
     airplay_rtsp_main(server);
     return 0;
 }
 
+/**
+ * @brief audio_thread.
+ * @param server Parameter named server.
+ * @return Function result.
+ */
 static DWORD WINAPI audio_thread(void *server)
 {
     airplay_audio_main(server);
@@ -125,12 +150,12 @@ int main(int argc, char **argv)
 
     if (argc != 1 && argc != 3 && argc != 4)
     {
-        LOG_ERROR("main", "Usage: %s [IPv4 MAC_HEX [NAME]]\n", argv[0]);
+        LOG_ERROR( "Usage: %s [IPv4 MAC_HEX [NAME]]\n", argv[0]);
         return 1;
     }
     if (net_init() != 0)
     {
-        LOG_ERROR("main", "Cannot initialize networking.\n");
+        LOG_ERROR( "Cannot initialize networking.\n");
         return 1;
     }
     strcpy(config.device_name, AIRPLAY_DEVICE_NAME);
@@ -138,7 +163,7 @@ int main(int argc, char **argv)
     {
         if (detect_identity(&config) != 0)
         {
-            LOG_ERROR("main", "Cannot find an active IPv4 adapter; specify IPv4 and MAC_HEX.\n");
+            LOG_ERROR( "Cannot find an active IPv4 adapter; specify IPv4 and MAC_HEX.\n");
             goto network_done;
         }
     }
@@ -147,7 +172,7 @@ int main(int argc, char **argv)
         if (strlen(argv[1]) >= sizeof(config.local_ip) || strlen(argv[2]) != 12 ||
             (argc == 4 && strlen(argv[3]) >= sizeof(config.device_name)))
         {
-            LOG_ERROR("main", "Invalid IPv4, MAC_HEX, or device name length.\n");
+            LOG_ERROR( "Invalid IPv4, MAC_HEX, or device name length.\n");
             goto network_done;
         }
         strcpy(config.local_ip, argv[1]);
@@ -157,15 +182,15 @@ int main(int argc, char **argv)
     }
     if (airplay_server_init(&server, &config) != 0)
     {
-        LOG_ERROR("main", "Cannot initialize AirPlay server.\n");
+        LOG_ERROR( "Cannot initialize AirPlay server.\n");
         goto network_done;
     }
     if (!SetConsoleCtrlHandler(console_handler, TRUE))
     {
-        LOG_ERROR("main", "Cannot register console stop handler.\n");
+        LOG_ERROR( "Cannot register console stop handler.\n");
         goto server_done;
     }
-    LOG_INFO("main",
+    LOG_INFO(
              "AirPlay: %s (%s, %s). Press Ctrl+C to stop.\n",
              config.device_name,
              config.local_ip,
@@ -175,7 +200,7 @@ int main(int argc, char **argv)
         threads[started] = CreateThread(NULL, 0, entries[started], &server, 0, NULL);
         if (!threads[started])
         {
-            LOG_ERROR("main", "Cannot start service thread.\n");
+            LOG_ERROR( "Cannot start service thread.\n");
             break;
         }
     }

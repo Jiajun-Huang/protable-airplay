@@ -1,3 +1,11 @@
+
+
+
+
+
+
+
+
 #ifndef AUDIO_PIPELINE_H
 #define AUDIO_PIPELINE_H
 
@@ -17,9 +25,6 @@
  * and orders
  * them, maps sender time to local deadlines, decodes them, and emits PCM. */
 
-/**
- * @brief Audio pipeline state
- */
 typedef enum
 {
     AUDIO_PIPELINE_STOPPED = 0,
@@ -51,7 +56,7 @@ typedef struct
     crypto_aes_context_t aes_context; // Embedded AES context
     ntp_sync_t ntp_sync;              // Embedded NTP sync state
     int ntp_sync_initialized;
-    playout_t playout;
+    playout_t playout; // Embedded playout state
     net_addr_t timing_peer;
     uint64_t first_arrival_us;
     uint32_t first_timestamp, queue_overflows, late_packets, nonzero_packets;
@@ -74,9 +79,6 @@ typedef struct
     int configured;
 } audio_pipeline_t;
 
-/**
- * @brief Audio pipeline configuration
- */
 typedef struct
 {
     // RTP ports
@@ -111,8 +113,19 @@ int audio_pipeline_create(audio_pipeline_t *pipeline, const audio_pipeline_confi
  */
 int audio_pipeline_configure(audio_pipeline_t *pipeline, const sdp_session_t *session);
 /* Reset the sender endpoint used by buffered audio and RAOP timing exchanges. */
+/**
+ * @brief audio_pipeline_set_transport.
+ * @param pipeline Parameter named pipeline.
+ * @param timing_peer Parameter named timing_peer.
+ */
 void audio_pipeline_set_transport(audio_pipeline_t *pipeline, const net_addr_t *timing_peer);
 /* Reject packets before the RECORD or FLUSH RTP timestamp boundary. */
+/**
+ * @brief audio_pipeline_set_start.
+ * @param pipeline Parameter named pipeline.
+ * @param timestamp Parameter named timestamp.
+ * @param exclusive Parameter named exclusive.
+ */
 void audio_pipeline_set_start(audio_pipeline_t *pipeline, uint32_t timestamp, int exclusive);
 
 /**

@@ -1,3 +1,9 @@
+
+
+
+
+
+
 #ifndef RTP_H
 #define RTP_H
 
@@ -32,10 +38,31 @@ typedef struct
 } rtp_packet_t;
 
 /* Callback invoked synchronously for one parsed audio packet. */
+/**
+ * @brief void.
+ * @param packet Parameter named packet.
+ * @param user_data Parameter named user_data.
+ * @return Function result.
+ */
 typedef void (*rtp_audio_callback)(const rtp_packet_t *packet, void *user_data);
 /* Callback invoked synchronously for an RTCP control datagram. */
+/**
+ * @brief void.
+ * @param data Parameter named data.
+ * @param len Parameter named len.
+ * @param user_data Parameter named user_data.
+ * @return Function result.
+ */
 typedef void (*rtp_control_callback)(const uint8_t *data, size_t len, void *user_data);
 /* Callback invoked synchronously for a timing datagram and its source. */
+/**
+ * @brief void.
+ * @param data Parameter named data.
+ * @param len Parameter named len.
+ * @param peer Parameter named peer.
+ * @param user_data Parameter named user_data.
+ * @return Function result.
+ */
 typedef void (*rtp_timing_callback)(const uint8_t *data,
                                     size_t len,
                                     const net_addr_t *peer,
@@ -68,12 +95,35 @@ typedef struct
 } rtp_receiver_t;
 
 /* Parse one RTP datagram into a borrowed packet view. */
+/**
+ * @brief rtp_parse_packet.
+ * @param data Parameter named data.
+ * @param len Parameter named len.
+ * @param packet Parameter named packet.
+ * @return Function result.
+ */
 int rtp_parse_packet(const uint8_t *data, size_t len, rtp_packet_t *packet);
 /* Bind all UDP sockets and copy the receiver configuration. */
+/**
+ * @brief rtp_receiver_create.
+ * @param receiver Parameter named receiver.
+ * @param config Parameter named config.
+ * @return Function result.
+ */
 int rtp_receiver_create(rtp_receiver_t *receiver, const rtp_receiver_config_t *config);
 /* Poll the audio, control, and timing sockets once and invoke ready callbacks. */
+/**
+ * @brief rtp_receiver_poll.
+ * @param receiver Parameter named receiver.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @return Function result.
+ */
 int rtp_receiver_poll(rtp_receiver_t *receiver, int timeout_ms);
 /* Close all receiver sockets and clear their state. */
+/**
+ * @brief rtp_receiver_close.
+ * @param receiver Parameter named receiver.
+ */
 void rtp_receiver_close(rtp_receiver_t *receiver);
 
 #endif

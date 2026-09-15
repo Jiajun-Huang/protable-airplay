@@ -1,3 +1,5 @@
+
+
 #ifndef ALAC_DECODER_H
 #define ALAC_DECODER_H
 
@@ -67,6 +69,10 @@ int alac_decoder_decode_frame(alac_decoder_t *decoder,
                               size_t max_output_samples);
 
 /* Release the low-level decoder context and reset negotiated state. */
+/**
+ * @brief alac_decoder_close.
+ * @param decoder Parameter named decoder.
+ */
 void alac_decoder_close(alac_decoder_t *decoder);
 
 #endif // ALAC_DECODER_H

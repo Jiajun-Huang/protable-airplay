@@ -7,21 +7,41 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 
+/**
+ * @brief now_ms.
+ * @return Function result.
+ */
 static uint32_t now_ms(void)
 {
     return (uint32_t)GetTickCount64();
 }
+/**
+ * @brief set_nonblocking.
+ * @param fd Parameter named fd.
+ * @return Function result.
+ */
 static int set_nonblocking(SOCKET fd)
 {
     u_long enabled = 1;
     return ioctlsocket(fd, FIONBIO, &enabled);
 }
 
+/**
+ * @brief would_block.
+ * @param error Parameter named error.
+ * @return Function result.
+ */
 static int would_block(int error)
 {
     return error == WSAEWOULDBLOCK;
 }
 
+/**
+ * @brief remaining_ms.
+ * @param start Parameter named start.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @return Function result.
+ */
 static int remaining_ms(uint32_t start, int timeout_ms)
 {
     uint32_t elapsed;
@@ -31,11 +51,20 @@ static int remaining_ms(uint32_t start, int timeout_ms)
     return elapsed >= (uint32_t)timeout_ms ? 0 : timeout_ms - (int)elapsed;
 }
 
+/**
+ * @brief socket_valid.
+ * @param sock Parameter named sock.
+ * @return Function result.
+ */
 static int socket_valid(const net_socket_t *sock)
 {
     return sock && sock->handle != UINTPTR_MAX;
 }
 
+/**
+ * @brief reset_socket.
+ * @param sock Parameter named sock.
+ */
 static void reset_socket(net_socket_t *sock)
 {
     if (sock)
@@ -45,6 +74,13 @@ static void reset_socket(net_socket_t *sock)
     }
 }
 
+/**
+ * @brief make_address.
+ * @param addr Parameter named addr.
+ * @param ip Parameter named ip.
+ * @param port Parameter named port.
+ * @return Function result.
+ */
 static int make_address(struct sockaddr_in *addr, const char *ip, uint16_t port)
 {
     memset(addr, 0, sizeof(*addr));
@@ -58,6 +94,12 @@ static int make_address(struct sockaddr_in *addr, const char *ip, uint16_t port)
     return InetPtonA(AF_INET, ip, &addr->sin_addr) == 1 ? 0 : NET_ERROR;
 }
 
+/**
+ * @brief copy_peer.
+ * @param peer Parameter named peer.
+ * @param addr Parameter named addr.
+ * @return Function result.
+ */
 static int copy_peer(net_addr_t *peer, const struct sockaddr_in *addr)
 {
     if (!peer)
@@ -86,6 +128,14 @@ void net_close(net_socket_t *sock)
     reset_socket(sock);
 }
 
+/**
+ * @brief open_bound.
+ * @param sock Parameter named sock.
+ * @param ip Parameter named ip.
+ * @param port Parameter named port.
+ * @param type Parameter named type.
+ * @return Function result.
+ */
 static int open_bound(net_socket_t *sock, const char *ip, uint16_t port, int type)
 {
     SOCKET fd;
@@ -126,6 +176,15 @@ int net_udp_bind(net_socket_t *sock, uint16_t port)
     return open_bound(sock, NULL, port, SOCK_DGRAM);
 }
 
+/**
+ * @brief wait_sockets.
+ * @param sockets Parameter named sockets.
+ * @param count Parameter named count.
+ * @param ready Parameter named ready.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @param writing Parameter named writing.
+ * @return Function result.
+ */
 static int wait_sockets(
     const net_socket_t *sockets, size_t count, uint8_t *ready, int timeout_ms, int writing)
 {
@@ -187,6 +246,13 @@ int net_wait(const net_socket_t *sockets, size_t count, uint8_t *ready, int time
     return wait_sockets(sockets, count, ready, timeout_ms, 0);
 }
 
+/**
+ * @brief wait_one.
+ * @param sock Parameter named sock.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @param writing Parameter named writing.
+ * @return Function result.
+ */
 static int wait_one(net_socket_t *sock, int timeout_ms, int writing)
 {
     uint8_t ready;

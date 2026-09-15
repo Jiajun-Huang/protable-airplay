@@ -17,17 +17,33 @@ typedef union
 static crypto_memory_pool_t pool;
 static int initialized;
 
+/**
+ * @brief Initialize an mbedTLS mutex callback object
+ *
+ * @param mutex Mutex callback object
+ */
 static void mutex_init(mbedtls_threading_mutex_t *mutex)
 {
     atomic_init(&mutex->locked, 0);
     mutex->valid = 1;
 }
 
+/**
+ * @brief Mark an mbedTLS mutex callback object as unavailable
+ *
+ * @param mutex Mutex callback object
+ */
 static void mutex_free(mbedtls_threading_mutex_t *mutex)
 {
     mutex->valid = 0;
 }
 
+/**
+ * @brief Lock an mbedTLS mutex callback object
+ *
+ * @param mutex Mutex callback object
+ * @return 0 on success, or an mbedTLS mutex error when invalid
+ */
 static int mutex_lock(mbedtls_threading_mutex_t *mutex)
 {
     if (!mutex->valid)
@@ -38,6 +54,12 @@ static int mutex_lock(mbedtls_threading_mutex_t *mutex)
     return 0;
 }
 
+/**
+ * @brief Unlock an mbedTLS mutex callback object
+ *
+ * @param mutex Mutex callback object
+ * @return 0 on success, or an mbedTLS mutex error when invalid
+ */
 static int mutex_unlock(mbedtls_threading_mutex_t *mutex)
 {
     if (!mutex->valid)

@@ -28,11 +28,15 @@ typedef int test_socket_t;
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
 
+/**
+ * @brief test_now_ms.
+ * @return Function result.
+ */
 static uint64_t test_now_ms(void)
 {
 #ifdef _WIN32
@@ -129,6 +133,6 @@ int main(void)
     net_close(&client);
     net_close(&listener);
     net_deinit();
-    LOG_INFO("test", "Network contract checks passed\n");
+    LOG_INFO( "Network contract checks passed\n");
     return 0;
 }

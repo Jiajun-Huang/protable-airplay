@@ -47,7 +47,7 @@ int alac_decoder_init(alac_decoder_t *decoder,
         for (size_t i = 0; i < decoder->fmtp_count; i++)
             length +=
                 (size_t)snprintf(values + length, sizeof(values) - length, " %u", decoder->fmtp[i]);
-        LOG_DEBUG("alac", "fmtp_count=%zu values:%s\n", decoder->fmtp_count, values);
+        LOG_DEBUG( "fmtp_count=%zu values:%s\n", decoder->fmtp_count, values);
     }
 
     alac_file *alac = alac_create(decoder->bit_depth, decoder->channels);
@@ -72,13 +72,13 @@ int alac_decoder_init(alac_decoder_t *decoder,
 
     decoder->impl = (void *)alac;
 
-    LOG_INFO("alac",
+    LOG_INFO(
              "Initialized real decoder: %u frames, %u-bit, %u channels, %u Hz\n",
              decoder->frame_length,
              decoder->bit_depth,
              decoder->channels,
              decoder->sample_rate);
-    LOG_DEBUG("alac",
+    LOG_DEBUG(
               "setinfo: max_frame=%u compat=%u sample_size=%u rice={%u,%u,%u} ch=%u maxRun=%u "
               "maxFrameBytes=%u avgBitRate=%u rate=%u\n",
               alac->setinfo_max_samples_per_frame,

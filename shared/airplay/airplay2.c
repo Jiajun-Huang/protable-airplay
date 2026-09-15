@@ -8,12 +8,28 @@
 #include <stdio.h>
 #include <string.h>
 
+/**
+ * @brief status.
+ * @param c Parameter named c.
+ * @param r Parameter named r.
+ * @param code Parameter named code.
+ * @param text Parameter named text.
+ * @return Function result.
+ */
 static int status(rtsp_client_t *c, const rtsp_request_t *r, int code, const char *text)
 {
     if (code >= 400)
-        LOG_WARN("airplay2", "%s: %d %s\n", r->uri, code, text);
+        LOG_WARN( "%s: %d %s\n", r->uri, code, text);
     return rtsp_send_response(c, code, text, r->cseq, NULL, NULL, 0);
 }
+/**
+ * @brief plist_response.
+ * @param c Parameter named c.
+ * @param r Parameter named r.
+ * @param w Parameter named w.
+ * @param root Parameter named root.
+ * @return Function result.
+ */
 static int plist_response(rtsp_client_t *c,
                           const rtsp_request_t *r,
                           bplist_writer_t *w,
@@ -25,17 +41,41 @@ static int plist_response(rtsp_client_t *c,
     return rtsp_send_response(
         c, 200, "OK", r->cseq, "Content-Type: application/x-apple-binary-plist\r\n", w->data, size);
 }
+/**
+ * @brief add_int.
+ * @param w Parameter named w.
+ * @param refs Parameter named refs.
+ * @param n Parameter named n.
+ * @param key Parameter named key.
+ * @param value Parameter named value.
+ */
 static void add_int(bplist_writer_t *w, uint32_t *refs, size_t *n, const char *key, uint64_t value)
 {
     refs[(*n)++] = bplist_add_string(w, key);
     refs[(*n)++] = bplist_add_uint(w, value);
 }
+/**
+ * @brief add_text.
+ * @param w Parameter named w.
+ * @param refs Parameter named refs.
+ * @param n Parameter named n.
+ * @param key Parameter named key.
+ * @param value Parameter named value.
+ */
 static void add_text(
     bplist_writer_t *w, uint32_t *refs, size_t *n, const char *key, const char *value)
 {
     refs[(*n)++] = bplist_add_string(w, key);
     refs[(*n)++] = bplist_add_string(w, value);
 }
+/**
+ * @brief number.
+ * @param p Parameter named p.
+ * @param dict Parameter named dict.
+ * @param key Parameter named key.
+ * @param fallback Parameter named fallback.
+ * @return Function result.
+ */
 static uint64_t number(const bplist_t *p, uint32_t dict, const char *key, uint64_t fallback)
 {
     uint64_t value;
@@ -81,6 +121,14 @@ int airplay2_info(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r)
     refs[n++] = bplist_add_array(&w, formats, 2);
     return plist_response(c, r, &w, bplist_add_dict(&w, refs, n / 2));
 }
+/**
+ * @brief stream_key.
+ * @param p Parameter named p.
+ * @param stream Parameter named stream.
+ * @param pair Parameter named pair.
+ * @param key Parameter named key.
+ * @return Function result.
+ */
 static int stream_key(const bplist_t *p, uint32_t stream, pairing_t *pair, uint8_t key[32])
 {
     const uint8_t *data;
@@ -103,6 +151,14 @@ static int stream_key(const bplist_t *p, uint32_t stream, pairing_t *pair, uint8
     mbedtls_chachapoly_free(&ctx);
     return result;
 }
+/**
+ * @brief setup.
+ * @param s Parameter named s.
+ * @param c Parameter named c.
+ * @param r Parameter named r.
+ * @param p Parameter named p.
+ * @return Function result.
+ */
 static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, const bplist_t *p)
 {
     uint8_t output[512];
@@ -116,7 +172,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
         const uint8_t *timing;
         size_t size;
         if (!bplist_bytes(p, bplist_get(p, p->root, "timingProtocol"), &timing, &size))
-            LOG_DEBUG("airplay2", "Requested timing protocol: %.*s\n", (int)size, timing);
+            LOG_DEBUG( "Requested timing protocol: %.*s\n", (int)size, timing);
         if (bplist_bytes(p, bplist_get(p, p->root, "timingProtocol"), &timing, &size) ||
             size != 3 || memcmp(timing, "PTP", 3))
             return status(c, r, 461, "Unsupported Transport");
@@ -125,7 +181,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
             return status(c, r, 500, "Internal Server Error");
         add_int(&w, refs, &n, "eventPort", c->event_listener.port);
         add_int(&w, refs, &n, "timingPort", 0);
-        LOG_INFO("airplay2", "Initial SETUP: PTP, event port %u\n", c->event_listener.port);
+        LOG_INFO( "Initial SETUP: PTP, event port %u\n", c->event_listener.port);
         return plist_response(c, r, &w, bplist_add_dict(&w, refs, n / 2));
     }
     if (bplist_count(p, streams) != 1)
@@ -134,7 +190,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
     uint64_t type = number(p, stream, "type", 0);
     uint64_t codec = number(p, stream, "ct", 0), rate = number(p, stream, "sr", 44100);
     uint64_t frames = number(p, stream, "spf", codec == 2 ? 352 : 1024);
-    LOG_DEBUG("airplay2",
+    LOG_DEBUG(
               "Requested stream type=%llu codec=%llu rate=%llu frames=%llu\n",
               (unsigned long long)type,
               (unsigned long long)codec,
@@ -183,7 +239,7 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
     uint32_t dict = bplist_add_dict(&w, refs, n / 2);
     uint32_t array = bplist_add_array(&w, &dict, 1);
     uint32_t root[] = {bplist_add_string(&w, "streams"), array};
-    LOG_INFO("airplay2",
+    LOG_INFO(
              "Stream SETUP: type=%llu codec=%llu rate=%llu frames=%llu\n",
              (unsigned long long)type,
              (unsigned long long)codec,
@@ -191,6 +247,14 @@ static int setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *r, 
              (unsigned long long)frames);
     return plist_response(c, r, &w, bplist_add_dict(&w, root, 1));
 }
+/**
+ * @brief set_anchor.
+ * @param s Parameter named s.
+ * @param c Parameter named c.
+ * @param r Parameter named r.
+ * @param p Parameter named p.
+ * @return Function result.
+ */
 static int set_anchor(rtsp_instance_t *s,
                       rtsp_client_t *c,
                       const rtsp_request_t *r,
@@ -225,7 +289,7 @@ static int set_anchor(rtsp_instance_t *s,
     else
         s->stream.anchor.playing = 0;
     os_mutex_unlock(&s->state_lock);
-    LOG_INFO("airplay2",
+    LOG_INFO(
              "Playback rate=%g RTP=%u clock=%016llx\n",
              rate,
              a.rtp_time,
@@ -245,7 +309,7 @@ int airplay2_record(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request_t *
     os_mutex_unlock(&s->state_lock);
     if (occupied)
         return status(c, r, 453, "Not Enough Bandwidth");
-    LOG_DEBUG("airplay2", "Control session RECORD accepted\n");
+    LOG_DEBUG( "Control session RECORD accepted\n");
     return rtsp_send_response(
         c, 200, "OK", r->cseq, "Audio-Latency: 0\r\nAudio-Jack-Status: connected\r\n", NULL, 0);
 }
@@ -257,7 +321,7 @@ int airplay2_fairplay_setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_req
     int size = fairplay_setup(&c->fairplay_stage, r->body, r->body_len, response, sizeof(response));
     if (size < 0)
         return status(c, r, 400, "Bad Request");
-    LOG_DEBUG("airplay2",
+    LOG_DEBUG(
               "FairPlay setup stage=%u request=%zu response=%d\n",
               c->fairplay_stage,
               r->body_len,
@@ -283,11 +347,19 @@ int airplay2_pair_setup(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_request
     if (!result && c->pairing.established)
     {
         c->encrypted = 1;
-        LOG_INFO("airplay2", "Transient pairing established with %s\n", c->peer.ip);
+        LOG_INFO( "Transient pairing established with %s\n", c->peer.ip);
     }
     return result;
 }
 
+/**
+ * @brief open_encrypted_plist.
+ * @param c Parameter named c.
+ * @param r Parameter named r.
+ * @param p Parameter named p.
+ * @param response_result Parameter named response_result.
+ * @return Function result.
+ */
 static int open_encrypted_plist(rtsp_client_t *c,
                                 const rtsp_request_t *r,
                                 bplist_t *p,
@@ -344,7 +416,7 @@ int airplay2_flush_buffered(rtsp_instance_t *s, rtsp_client_t *c, const rtsp_req
         ++s->stream.flush_generation;
     }
     os_mutex_unlock(&s->state_lock);
-    LOG_DEBUG("airplay2",
+    LOG_DEBUG(
               "FLUSHBUFFERED through sequence=%u RTP=%u\n",
               (uint32_t)until_sequence,
               (uint32_t)until);

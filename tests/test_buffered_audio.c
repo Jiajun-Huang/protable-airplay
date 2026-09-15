@@ -8,7 +8,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -50,6 +50,11 @@ void net_close(net_socket_t *s)
     s->handle = UINTPTR_MAX;
     ++closed;
 }
+/**
+ * @brief receive.
+ * @param p Parameter named p.
+ * @param context Parameter named context.
+ */
 static void receive(const rtp_packet_t *p, void *context)
 {
     (void)context;
@@ -57,6 +62,11 @@ static void receive(const rtp_packet_t *p, void *context)
     ++accepted;
     last_timestamp = p->header.timestamp;
 }
+/**
+ * @brief packet.
+ * @param sequence Parameter named sequence.
+ * @param timestamp Parameter named timestamp.
+ */
 static void packet(uint32_t sequence, uint32_t timestamp)
 {
     CHECK(available + 38 <= sizeof(incoming));
@@ -72,6 +82,10 @@ static void packet(uint32_t sequence, uint32_t timestamp)
     p[9] = (uint8_t)timestamp;
     available += 38;
 }
+/**
+ * @brief drain.
+ * @param b Parameter named b.
+ */
 static void drain(buffered_audio_t *b)
 {
     while (position < available)
@@ -111,6 +125,6 @@ int main(void)
     buffered_audio_disconnect(&b);
     CHECK(!b.discarding && b.used == 0);
     buffered_audio_close(&b);
-    LOG_INFO("test", "Buffered seek, partial TCP records and 24-bit sequence wrap passed\n");
+    LOG_INFO( "Buffered seek, partial TCP records and 24-bit sequence wrap passed\n");
     return 0;
 }

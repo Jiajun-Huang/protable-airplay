@@ -12,7 +12,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
@@ -70,6 +70,6 @@ int main(void)
     ntp_timestamp_t a = {100, 0x80000000u}, b = {101, 0};
     CHECK(ntp_sync_diff_us(a, b) == 500000);
     CHECK(ntp_sync_diff_us(b, a) == -500000);
-    LOG_INFO("test", "Core protocol checks passed\n");
+    LOG_INFO( "Core protocol checks passed\n");
     return 0;
 }

@@ -20,17 +20,24 @@ extern "C"
     /* Minimum severity emitted by log_message; callers may change it at runtime. */
     extern log_level_t g_log_level;
 
-    /* Messages include their terminating newline. Use the LOG_* macros at call sites. */
-    void log_message(log_level_t level, const char *tag, const char *format, ...);
+    /**
+     * @brief Emit a formatted log message.
+     * @param level Severity level of the message.
+     * @param file Source file containing the log call.
+     * @param line Source line containing the log call.
+     * @param format printf-style message format.
+     * @param ... Values referenced by @p format.
+     */
+    void log_message(log_level_t level, const char *file, int line, const char *format, ...);
 
-/* Emit a debug message tagged with its module name. */
-#define LOG_DEBUG(tag, ...) log_message(LOG_LEVEL_DEBUG, tag, __VA_ARGS__)
-/* Emit an informational message tagged with its module name. */
-#define LOG_INFO(tag, ...) log_message(LOG_LEVEL_INFO, tag, __VA_ARGS__)
-/* Emit a warning message tagged with its module name. */
-#define LOG_WARN(tag, ...) log_message(LOG_LEVEL_WARN, tag, __VA_ARGS__)
-/* Emit an error message tagged with its module name. */
-#define LOG_ERROR(tag, ...) log_message(LOG_LEVEL_ERROR, tag, __VA_ARGS__)
+/* Emit a debug message with its source location. */
+#define LOG_DEBUG(...) log_message(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+/* Emit an informational message with its source location. */
+#define LOG_INFO(...) log_message(LOG_LEVEL_INFO, __FILE__, __LINE__, __VA_ARGS__)
+/* Emit a warning message with its source location. */
+#define LOG_WARN(...) log_message(LOG_LEVEL_WARN, __FILE__, __LINE__, __VA_ARGS__)
+/* Emit an error message with its source location. */
+#define LOG_ERROR(...) log_message(LOG_LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
 
 #ifdef __cplusplus
 }

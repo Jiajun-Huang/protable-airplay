@@ -15,12 +15,15 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
+            LOG_ERROR( "%s:%d: %s\n", __FILE__, __LINE__, #x);                              \
             exit(1);                                                                               \
         }                                                                                          \
     } while (0)
 static uint64_t now = 10000000;
 
+/**
+ * @brief test_static_crypto_memory.
+ */
 static void test_static_crypto_memory(void)
 {
     CHECK(crypto_memory_init() == 0);
@@ -59,6 +62,12 @@ int net_udp_recv(net_socket_t *s, void *data, size_t size, net_addr_t *peer, int
     return NET_TIMEOUT;
 }
 
+/**
+ * @brief unhex.
+ * @param text Parameter named text.
+ * @param out Parameter named out.
+ * @return Function result.
+ */
 static size_t unhex(const char *text, uint8_t *out)
 {
     size_t n = 0;
@@ -71,6 +80,9 @@ static size_t unhex(const char *text, uint8_t *out)
     }
     return n;
 }
+/**
+ * @brief test_plist.
+ */
 static void test_plist(void)
 {
     /* Encoded independently with Python plistlib. */
@@ -110,6 +122,9 @@ static void test_plist(void)
         bplist_add_string(&w, "this string cannot fit together with an offset table and trailer");
     CHECK(bplist_finish(&w, ref) == 0);
 }
+/**
+ * @brief test_records.
+ */
 static void test_records(void)
 {
     /* Encoded independently with Python cryptography, counter zero, key 00..1f. */
@@ -136,6 +151,9 @@ static void test_records(void)
     pairing_close(&p);
     CHECK(!p.established && !p.read_counter && !p.write_counter);
 }
+/**
+ * @brief test_pairing_rejection.
+ */
 static void test_pairing_rejection(void)
 {
     pairing_t p = {0}, second = {0};
@@ -154,6 +172,9 @@ static void test_pairing_rejection(void)
     CHECK(pairing_setup(&p, truncated, sizeof(truncated), out, sizeof(out), &length) < 0);
     pairing_close(&p);
 }
+/**
+ * @brief test_ptp.
+ */
 static void test_ptp(void)
 {
     ptp_sync_t p;
@@ -190,6 +211,9 @@ static void test_ptp(void)
     CHECK(ptp_sync_packet(&p, follow, sizeof(follow), now) == 0 && !p.ready);
     ptp_sync_close(&p);
 }
+/**
+ * @brief test_fairplay.
+ */
 static void test_fairplay(void)
 {
     uint8_t stage = 0, other = 0, response[FAIRPLAY_RESPONSE_MAX];
@@ -237,7 +261,7 @@ int main(void)
     test_pairing_rejection();
     test_ptp();
     test_fairplay();
-    LOG_INFO("test",
+    LOG_INFO(
              "AirPlay 2 plist, authenticated records, pairing rejection and PTP checks passed\n");
     crypto_memory_deinit();
     return 0;

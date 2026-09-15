@@ -1,3 +1,5 @@
+
+
 #ifndef AIRPLAY_DISCOVERY_H
 #define AIRPLAY_DISCOVERY_H
 
@@ -23,6 +25,16 @@ typedef struct
 } airplay_discovery_t;
 
 /* TXT arrays and strings must outlive discovery. Names and IPv4 are copied. */
+/**
+ * @brief airplay_discovery_init.
+ * @param discovery Parameter named discovery.
+ * @param friendly_name Parameter named friendly_name.
+ * @param local_mac Parameter named local_mac.
+ * @param local_ip Parameter named local_ip.
+ * @param raop_txt_entries Parameter named raop_txt_entries.
+ * @param raop_txt_count Parameter named raop_txt_count.
+ * @return Function result.
+ */
 int airplay_discovery_init(airplay_discovery_t *discovery,
                            const char *friendly_name,
                            const char *local_mac,
@@ -31,8 +43,18 @@ int airplay_discovery_init(airplay_discovery_t *discovery,
                            size_t raop_txt_count);
 
 /* Receive and answer one batch of mDNS traffic. Returns zero on idle or success. */
+/**
+ * @brief airplay_discovery_poll.
+ * @param discovery Parameter named discovery.
+ * @param timeout_ms Parameter named timeout_ms.
+ * @return Function result.
+ */
 int airplay_discovery_poll(airplay_discovery_t *discovery, int timeout_ms);
 /* Send goodbye records when possible and release the mDNS socket. */
+/**
+ * @brief airplay_discovery_deinit.
+ * @param discovery Parameter named discovery.
+ */
 void airplay_discovery_deinit(airplay_discovery_t *discovery);
 
 #endif

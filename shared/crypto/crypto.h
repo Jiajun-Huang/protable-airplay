@@ -1,3 +1,6 @@
+
+
+
 #ifndef CRYPTO_H
 #define CRYPTO_H
 
@@ -61,6 +64,18 @@ int crypto_aes_decrypt(crypto_aes_context_t *ctx,
 /* Decrypt an AirPlay 2 RTP payload using ChaCha20-Poly1305.
  * The payload layout is ciphertext || 16-byte tag || 8-byte nonce suffix.
  * AAD is the RTP timestamp and SSRC at full_packet offsets 4..11. */
+/**
+ * @brief crypto_airplay2_decrypt_rtp.
+ * @param key Parameter named key.
+ * @param full_packet Parameter named full_packet.
+ * @param full_packet_len Parameter named full_packet_len.
+ * @param payload_offset Parameter named payload_offset.
+ * @param payload_len Parameter named payload_len.
+ * @param output Parameter named output.
+ * @param output_capacity Parameter named output_capacity.
+ * @param output_len Parameter named output_len.
+ * @return Function result.
+ */
 int crypto_airplay2_decrypt_rtp(const uint8_t key[32],
                                 const uint8_t *full_packet,
                                 size_t full_packet_len,

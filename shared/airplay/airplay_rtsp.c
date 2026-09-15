@@ -8,6 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief request_body_contains_key.
+ * @param request Parameter named request.
+ * @param key Parameter named key.
+ * @return Function result.
+ */
 static int request_body_contains_key(const rtsp_request_t *request, const char *key)
 {
     char body[256];
@@ -20,6 +26,12 @@ static int request_body_contains_key(const rtsp_request_t *request, const char *
     return strstr(body, key) != NULL;
 }
 
+/**
+ * @brief parse_body_volume_db.
+ * @param request Parameter named request.
+ * @param out_db Parameter named out_db.
+ * @return Function result.
+ */
 static int parse_body_volume_db(const rtsp_request_t *request, float *out_db)
 {
     char body[256], *value, *end;
@@ -45,6 +57,12 @@ static int parse_body_volume_db(const rtsp_request_t *request, float *out_db)
     return 0;
 }
 
+/**
+ * @brief get_header_value.
+ * @param request Parameter named request.
+ * @param name Parameter named name.
+ * @return Function result.
+ */
 static const char *get_header_value(const rtsp_request_t *request, const char *name)
 {
     size_t i;
@@ -54,6 +72,12 @@ static const char *get_header_value(const rtsp_request_t *request, const char *n
     return NULL;
 }
 
+/**
+ * @brief parse_mac_hex.
+ * @param hex Parameter named hex.
+ * @param mac Parameter named mac.
+ * @return Function result.
+ */
 static int parse_mac_hex(const char *hex, uint8_t mac[6])
 {
     unsigned values[6];
@@ -72,6 +96,13 @@ static int parse_mac_hex(const char *hex, uint8_t mac[6])
     return 0;
 }
 
+/**
+ * @brief parameter_u32.
+ * @param text Parameter named text.
+ * @param key Parameter named key.
+ * @param out Parameter named out.
+ * @return Function result.
+ */
 static int parameter_u32(const char *text, const char *key, uint32_t *out)
 {
     if (!text)
@@ -141,7 +172,7 @@ int airplay_rtsp_options(rtsp_instance_t *instance,
                          response);
             }
             else
-                LOG_ERROR("RTSP", "Failed to generate Apple-Response\n");
+                LOG_ERROR( "Failed to generate Apple-Response\n");
         }
     }
     return rtsp_send_response(client, 200, "OK", request->cseq, extra_headers, NULL, 0);
@@ -175,7 +206,7 @@ int airplay_rtsp_announce(rtsp_instance_t *instance,
     ++instance->stream.generation;
     instance->stream_owner = client;
     os_mutex_unlock(&instance->state_lock);
-    LOG_INFO("RTSP",
+    LOG_INFO(
              "ANNOUNCE parsed: codec=%d rate=%u channels=%u bits=%u\n",
              parsed.codec,
              parsed.sample_rate,
@@ -211,7 +242,7 @@ int airplay_rtsp_setup(rtsp_instance_t *instance,
         ++instance->stream.generation;
     }
     os_mutex_unlock(&instance->state_lock);
-    LOG_INFO("RTSP", "SETUP timing peer=%s:%u\n", client->peer.ip, timing_port);
+    LOG_INFO( "SETUP timing peer=%s:%u\n", client->peer.ip, timing_port);
     const char *headers =
         "Session: 00000001\r\n"
         "Transport: RTP/AVP/UDP;unicast;mode=record;server_port=" AIRPLAY_STRINGIFY(AIRPLAY_AUDIO_PORT) ";control_port=" AIRPLAY_STRINGIFY(
@@ -279,7 +310,7 @@ int airplay_rtsp_flush(rtsp_instance_t *instance,
         instance->stream.floor_exclusive = 1;
     }
     os_mutex_unlock(&instance->state_lock);
-    LOG_INFO("RTSP", "FLUSH rtptime=%u present=%d\n", timestamp, has_timestamp);
+    LOG_INFO( "FLUSH rtptime=%u present=%d\n", timestamp, has_timestamp);
     return rtsp_send_response(client, 200, "OK", request->cseq, NULL, NULL, 0);
 }
 

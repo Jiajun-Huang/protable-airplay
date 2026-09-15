@@ -87,7 +87,7 @@ int buffered_audio_poll(buffered_audio_t *b,
             return 1;
         }
         b->discarding = 0;
-        LOG_DEBUG("audio", "Buffered seek boundary reached: sequence=%u\n", sequence);
+        LOG_DEBUG( "Buffered seek boundary reached: sequence=%u\n", sequence);
     }
     rtp_packet_t packet = {0};
     packet.header.version = 2;

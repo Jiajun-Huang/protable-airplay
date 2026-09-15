@@ -9,7 +9,7 @@
     {                                                                                              \
         if (!(x))                                                                                  \
         {                                                                                          \
-            LOG_ERROR("test", "fake platform: %s\n", #x);                                          \
+            LOG_ERROR( "fake platform: %s\n", #x);                                          \
             abort();                                                                               \
         }                                                                                          \
     } while (0)
@@ -37,6 +37,10 @@ void fake_reset(int fail)
     next_socket = 1;
     fake_time = UINT64_C(1700000000500000);
 }
+/**
+ * @brief fails.
+ * @return Function result.
+ */
 static int fails(void)
 {
     return ++fake_steps == fail_step;
@@ -86,6 +90,12 @@ int net_init(void)
 void net_deinit(void)
 {
 }
+/**
+ * @brief open_socket.
+ * @param socket Parameter named socket.
+ * @param port Parameter named port.
+ * @return Function result.
+ */
 static int open_socket(net_socket_t *socket, uint16_t port)
 {
     socket->handle = UINTPTR_MAX;

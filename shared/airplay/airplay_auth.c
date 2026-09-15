@@ -34,6 +34,16 @@ static const char airport_private_key[] =
     "2gG0N5hvJpzwwhbhXqFKA4zaaSrw622wDniAK5MlIE0tIAKKP4yxNGjoD2QYjhBGuhvkWKY=\n"
     "-----END RSA PRIVATE KEY-----\0";
 
+/**
+ * @brief base64_decode_padded.
+ * @param str Parameter named str.
+ * @param out Parameter named out.
+ * @param out_size Parameter named out_size.
+ * @param padded Parameter named padded.
+ * @param padded_size Parameter named padded_size.
+ * @param out_len Parameter named out_len.
+ * @return Function result.
+ */
 static int base64_decode_padded(const char *str,
                                 uint8_t *out,
                                 size_t out_size,

@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 #ifndef AIRPLAY_PTP_SYNC_H
 #define AIRPLAY_PTP_SYNC_H
 #include "net.h"
@@ -23,22 +30,77 @@ typedef struct
     int pending, ready, opened;
 } ptp_sync_t;
 
-/* Initialize an unopened PTP synchronizer. */
+/**
+ * @brief Initialize an unopened PTP synchronizer
+ *
+ * @param p PTP synchronizer state
+ */
 void ptp_sync_init(ptp_sync_t *p);
-/* Join the PTP multicast groups on the selected local IPv4 interface. */
+
+/**
+ * @brief Open PTP event and general-message multicast sockets
+ *
+ * @param p PTP synchronizer state
+ * @param local_ip Local IPv4 address used to join the multicast group
+ * @return 0 on success, -1 on socket or multicast setup failure
+ */
 int ptp_sync_open(ptp_sync_t *p, const char *local_ip);
-/* Close PTP sockets and clear clock readiness. */
+
+/**
+ * @brief Close PTP sockets and reset synchronizer state
+ *
+ * @param p PTP synchronizer state
+ */
 void ptp_sync_close(ptp_sync_t *p);
-/* Select the sender clock identity required by future samples and anchors. */
+
+/**
+ * @brief Select the sender clock used for synchronization
+ *
+ * @param p PTP synchronizer state
+ * @param clock_id PTP clock identity from the AirPlay anchor
+ */
 void ptp_sync_set_clock(ptp_sync_t *p, uint64_t clock_id);
-/* Consume one PTP event or general message received at received_us. */
+
+/**
+ * @brief Consume one PTP Sync or Follow_Up packet
+ *
+ * @param p PTP synchronizer state
+ * @param data PTP packet bytes
+ * @param size Number of bytes in the packet
+ * @param received_us Local receive time in microseconds
+ * @return 1 when a synchronization sample is accepted, 0 when ignored, -1 when invalid
+ */
 int ptp_sync_packet(ptp_sync_t *p, const uint8_t *data, size_t size, uint64_t received_us);
-/* Drain ready PTP packets without blocking. */
+
+/**
+ * @brief Drain pending PTP packets without blocking
+ *
+ * @param p PTP synchronizer state
+ * @return 0 on success, -1 on socket receive failure
+ */
 int ptp_sync_poll(ptp_sync_t *p);
-/* AirPlay realtime control packet: RTP at byte 4, PTP nanoseconds at 8,
- * sender's current RTP at 16, and clock identity at 20. */
+
+/**
+ * @brief Parse an AirPlay RTP-to-PTP playback anchor
+ *
+ * @param anchor Destination playback anchor
+ * @param data AirPlay control packet bytes
+ * @param size Number of bytes in the control packet
+ * @return 0 on success, -1 when the packet is invalid
+ */
 int ptp_sync_anchor(airplay_anchor_t *anchor, const uint8_t *data, size_t size);
-/* Convert one RTP timestamp and sender anchor to a local playback deadline. */
+
+/**
+ * @brief Convert an RTP timestamp into a local playback deadline
+ *
+ * @param p PTP synchronizer state
+ * @param anchor AirPlay RTP-to-PTP playback anchor
+ * @param timestamp RTP timestamp to schedule
+ * @param rate Audio sample rate in frames per second
+ * @param latency Additional sender playout latency in frames
+ * @param deadline Destination local deadline in microseconds
+ * @return 0 on success, -1 when synchronization data is unavailable or invalid
+ */
 int ptp_sync_deadline(const ptp_sync_t *p,
                       const airplay_anchor_t *anchor,
                       uint32_t timestamp,

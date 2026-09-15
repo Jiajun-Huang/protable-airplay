@@ -18,6 +18,10 @@ static service_task_t services[3];
 static unsigned started;
 static int active;
 
+/**
+ * @brief service_task.
+ * @param argument Parameter named argument.
+ */
 static void service_task(void *argument)
 {
     service_task_t *service = (service_task_t *)argument;
