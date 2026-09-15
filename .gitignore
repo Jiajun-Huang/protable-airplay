@@ -44,3 +44,6 @@ TestingTemporary/
 *.swp
 .DS_Store
 Thumbs.db
+
+#doc
+doc/
