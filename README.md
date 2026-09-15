@@ -4,9 +4,7 @@ A portable AirPlay audio receiver written in C.
 
 Supports traditional RAOP and AirPlay 2 audio, with the protocol stack separated from networking, OS, and audio-device implementations.
 
-## Why this project?
-
-Most AirPlay receiver implementations are tightly coupled to a specific OS, application, or runtime.
+## Protable Airplay
 
 This project is designed to make the AirPlay stack reusable across very different targets.
 
@@ -16,7 +14,6 @@ This project is designed to make the AirPlay stack reusable across very differen
 * **Small platform interface** — porting only requires networking, OS primitives, and audio output.
 * **Complete audio pipeline** — transport, decryption, decoding, buffering, clock synchronization, and playback scheduling are handled by the shared core.
 * **NTP and PTP synchronization** — audio is scheduled against the sender clock instead of packet arrival time.
-* **Clear module boundaries** — protocol, crypto, codecs, synchronization, services, and audio processing are kept separate.
 
 The goal is to provide an AirPlay implementation that is easy to understand, integrate, port, and fit into systems with tighter runtime and memory constraints.
 
