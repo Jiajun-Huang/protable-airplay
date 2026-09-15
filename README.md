@@ -1,6 +1,15 @@
 # Portable AirPlay Speaker
 
-A portable AirPlay audio receiver written in C. The project supports classic RAOP (AirPlay 1) and AirPlay 2 while keeping protocol logic separate from networking, operating-system services, and audio output.
+[![CMake](https://img.shields.io/badge/build-CMake%203.20%2B-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
+[![Language](https://img.shields.io/badge/language-C11-1f6feb?logo=c&logoColor=white)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
+[![GitHub stars](https://img.shields.io/github/stars/Jiajun-Huang/airplay?style=flat&logo=github)](https://github.com/Jiajun-Huang/airplay/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/Jiajun-Huang/airplay)](https://github.com/Jiajun-Huang/airplay/issues)
+
+**A portable, embedded-friendly AirPlay receiver written in C.**
+
+Receive audio from an iPhone, iPad, or Mac with a small protocol core that can run on Windows, Linux, macOS, and custom embedded platforms. Classic RAOP (AirPlay 1) and AirPlay 2 share the same buffering, decoding, synchronization, and platform interfaces.
+
+<p align="center"><a href="#quick-start">Build it</a> · <a href="#supported-audio">See supported audio</a> · <a href="#porting-to-a-new-target">Port it</a> · <a href="https://github.com/Jiajun-Huang/airplay/issues">Report an issue</a></p>
 
 ## Highlights
 
@@ -12,6 +21,8 @@ A portable AirPlay audio receiver written in C. The project supports classic RAO
 - Explicit buffers and protocol state suitable for desktop and embedded targets
 
 The core is designed to be understandable, portable, and practical on systems with tighter memory and runtime constraints.
+
+> If this project is useful to you, a Star helps other developers find it and helps guide future protocol and platform work.
 
 ## Supported Audio
 
@@ -69,13 +80,7 @@ ALAC and PCM handling are provided by the project.
 
 Dependencies are fetched automatically by CMake through CPM.
 
-## Build and run
-
-Requirements:
-
-- CMake 3.20+
-- A C11 compiler
-- Ninja recommended
+## Quick start
 
 ### Windows
 
@@ -85,22 +90,20 @@ cmake --build build
 .\build\airplay_player.exe
 ```
 
-The Windows executable detects an active IPv4 adapter automatically. To select an interface explicitly:
+The receiver discovers an active IPv4 adapter automatically. To select an interface and name explicitly:
 
 ```powershell
 .\build\airplay_player.exe 192.168.1.20 AABBCCDDEEFF LivingRoom
 ```
 
-The arguments are `IPv4 MAC_HEX [NAME]`; `MAC_HEX` must contain 12 hexadecimal characters.
+The arguments are `IPv4 MAC_HEX [NAME]`; `MAC_HEX` must contain 12 hexadecimal characters. Open AirPlay on the sender and select the receiver from the audio output menu.
 
 ### Linux
 
 ```bash
-cmake -S . -B build \
-    -G Ninja \
+cmake -S . -B build -G Ninja \
     -DAIRPLAY_PLATFORM=linux \
     -DCMAKE_BUILD_TYPE=Release
-
 cmake --build build
 ./build/airplay_player
 ```
@@ -108,24 +111,24 @@ cmake --build build
 ### macOS
 
 ```bash
-cmake -S . -B build \
-    -G Ninja \
+cmake -S . -B build -G Ninja \
     -DAIRPLAY_PLATFORM=apple \
     -DCMAKE_BUILD_TYPE=Release
-
 cmake --build build
 ./build/airplay_player
 ```
 
-For Linux and macOS, use the same optional arguments with the platform executable:
-
-```text
-airplay_player <IPv4> <MAC_HEX> [NAME]
-```
-
 Press `Ctrl+C` to stop the receiver.
 
-## Test
+## Build requirements
+
+Requirements:
+
+- CMake 3.20+
+- A C11 compiler
+- Ninja recommended
+
+## Test locally
 
 Desktop builds include protocol, network-contract, server-lifecycle, RTSP, mDNS, ALAC, timing, AirPlay 2, and buffered-audio tests.
 
@@ -156,6 +159,23 @@ The default service ports are RTSP `5000`, realtime/control/timing UDP `6000`/`6
 4. Set board include paths with `-DAIRPLAY_PLATFORM_INCLUDE_DIRS="..."` when required.
 
 The `embedded` backend is intentionally a board-integration starting point: it expects the board project to provide the audio and network environment.
+
+## Contributing
+
+Useful contributions include:
+
+- Testing with real AirPlay senders and reporting the sender model, platform, and logs
+- Porting the three platform interfaces to a new board or operating system
+- Improving protocol compatibility, timing behavior, and test fixtures
+- Documenting reproducible build and integration steps
+
+Please open an issue before large protocol or platform changes. Small, focused pull requests are easiest to review.
+
+## Repository links
+
+- [Issue tracker](https://github.com/Jiajun-Huang/airplay/issues)
+- [Discussions and questions](https://github.com/Jiajun-Huang/airplay/discussions)
+- [Project source](https://github.com/Jiajun-Huang/airplay)
 
 ## Status
 
